@@ -335,15 +335,24 @@ def inspect_sample_file(parquet_path: Path | str) -> SampleReport:
             else:
                 report.underfill_status = "ok"
         stats = manifest.get("stats", {})
-        if "subsets_before_exclusion" in stats or "exclusion_counts_by_subset" in stats:
+        if (
+            "subsets_before_exclusion" in stats
+            or "exclusion_counts_by_subset" in stats
+            or "records_encountered_per_subset" in stats
+        ):
             report.gigaverbo_exclusion_stats = {
                 k: v
                 for k, v in stats.items()
                 if k
                 in (
                     "subsets_before_exclusion",
+                    "records_encountered_per_subset",
                     "exclusion_counts_by_subset",
+                    "exclusion_rules_matched",
+                    "eligible_records",
+                    "eligible_records_per_subset",
                     "subsets_after_exclusion",
+                    "retained_sample_per_subset",
                     "total_excluded",
                 )
             }
@@ -458,14 +467,21 @@ def format_report_text(report: SampleReport) -> str:
                 excl_by_subset.items(), key=lambda x: x[1], reverse=True
             )[:10]:
                 lines.append(f"    {sub}: {cnt:,}")
-        subsets_before = ex.get("subsets_before_exclusion", {})
+        subsets_before = ex.get("records_encountered_per_subset") or ex.get(
+            "subsets_before_exclusion", {}
+        )
         if subsets_before:
             lines.append(
                 f"  Subsets encountered before exclusion: {len(subsets_before)}"
             )
-        subsets_after = ex.get("subsets_after_exclusion", {})
-        if subsets_after:
-            lines.append(f"  Subsets remaining after exclusion: {len(subsets_after)}")
+        eligible = ex.get("eligible_records_per_subset") or ex.get(
+            "subsets_after_exclusion", {}
+        )
+        if eligible:
+            lines.append(f"  Subsets remaining after exclusion: {len(eligible)}")
+        retained = ex.get("retained_sample_per_subset", {})
+        if retained:
+            lines.append(f"  Subsets retained in final sample: {len(retained)}")
 
     lines.append("")
     lines.append("--- Missing Field Rates ---")

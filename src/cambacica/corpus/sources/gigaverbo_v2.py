@@ -12,15 +12,14 @@ exclusion filtering is applied.
 
 *candidate* first applies the exclusion config defined in
 ``configs/gigaverbo_exclusions.yaml`` to each record **before** adding it to
-the reservoir.  It also uses a distributed shard selection (not identical to
-audit) to keep the two modes comparable without forcing artificial disjointness.
+the reservoir.  Like audit, candidate spans all 56 shards using distributed
+intra-shard row-group selection to approximate the residual edu_high pool.
 
-Both modes report:
-- subsets encountered before any exclusions;
-- exclusion counts by subset (candidate only);
-- subsets remaining after exclusions (candidate only);
-- records examined and bytes read;
-- overlap with the other mode is reported by the ``compare`` command separately.
+Both modes report unambiguous statistics satisfying:
+- sum(records_encountered_per_subset) == records_examined
+- eligible_records == records_examined - total_excluded
+- sum(eligible_records_per_subset) == eligible_records
+- sum(retained_sample_per_subset) == final sample size
 """
 
 from __future__ import annotations
@@ -338,7 +337,7 @@ class GigaVerboSampler(BaseSourceSampler):
         self,
         mode: str = "candidate",
         size: int = 25000,
-        num_shards_to_visit: int = 8,
+        num_shards_to_visit: Optional[int] = None,
         row_groups_per_shard: int = 4,
         exclusions_path: Optional[Path | str] = None,
         **kwargs,
@@ -351,9 +350,9 @@ class GigaVerboSampler(BaseSourceSampler):
             Sampling mode ('audit' or 'candidate').
         size : int, default 25000
             Target number of documents.
-        num_shards_to_visit : int, default 8
-            For 'candidate' mode: number of evenly-distributed shards.
-            For 'audit' mode: all 56 shards are visited regardless.
+        num_shards_to_visit : int or None, optional
+            Number of shards to visit. Defaults to None (visiting all 56 shards
+            for both 'audit' and 'candidate' modes).
         row_groups_per_shard : int, default 4
             Number of distributed row groups to visit per shard.
         exclusions_path : Path or str or None, optional
@@ -375,25 +374,33 @@ class GigaVerboSampler(BaseSourceSampler):
         commit_sha = resolve_hf_commit_sha(self.canonical_id, revision="main")
 
         total_shards = 56  # known upstream count
-        if mode == "audit":
+        if num_shards_to_visit is None or num_shards_to_visit >= total_shards:
             visit_count = total_shards
+        else:
+            visit_count = num_shards_to_visit
+
+        if mode == "audit":
             frame = (
                 f"distributed_rowgroup_audit (all {total_shards} shards, "
                 f"{row_groups_per_shard} distributed row groups per shard, "
                 f"no exclusions applied)"
             )
-            total_rg = visit_count * row_groups_per_shard
-            quota_per_rg = max(1, size // total_rg)
+        elif visit_count == total_shards:
+            frame = (
+                f"distributed_rowgroup_candidate (all {total_shards} shards, "
+                f"{row_groups_per_shard} distributed row groups per shard; "
+                f"exclusion policy applied before sampling)"
+            )
         else:
-            visit_count = min(num_shards_to_visit, total_shards)
             frame = (
                 f"distributed_rowgroup_candidate ({visit_count} of "
                 f"{total_shards} shards evenly distributed, "
                 f"{row_groups_per_shard} distributed row groups per shard; "
                 f"exclusion policy applied before sampling)"
             )
-            total_rg = visit_count * row_groups_per_shard
-            quota_per_rg = max(1, size // total_rg)
+
+        total_rg = visit_count * row_groups_per_shard
+        quota_per_rg = max(1, size // total_rg) if total_rg else size
 
         return {
             "source": self.source_name,
@@ -431,7 +438,7 @@ class GigaVerboSampler(BaseSourceSampler):
         seed: int = 42,
         output_dir: Optional[Path | str] = None,
         exclusions_path: Optional[Path | str] = None,
-        num_shards_to_visit: int = 8,
+        num_shards_to_visit: Optional[int] = None,
         row_groups_per_shard: int = 4,
         batch_size: int = 2048,
         **kwargs,
@@ -450,9 +457,9 @@ class GigaVerboSampler(BaseSourceSampler):
             Output destination directory.
         exclusions_path : Path or str or None, optional
             Path to gigaverbo_exclusions.yaml (used only in 'candidate' mode).
-        num_shards_to_visit : int, default 8
-            For 'candidate' mode: number of evenly-distributed shards to visit.
-            For 'audit' mode: all available shards are visited regardless.
+        num_shards_to_visit : int or None, optional
+            Number of shards to visit. Defaults to None (visiting all available
+            shards for both 'audit' and 'candidate' modes).
         row_groups_per_shard : int, default 4
             Number of distributed row groups to visit per shard.
         batch_size : int, default 2048
@@ -495,13 +502,24 @@ class GigaVerboSampler(BaseSourceSampler):
 
         total_shards = len(all_shard_files)
 
-        if mode == "audit":
+        if (
+            mode == "audit"
+            or num_shards_to_visit is None
+            or num_shards_to_visit >= total_shards
+        ):
             selected_shards = all_shard_files
-            sampling_frame = (
-                f"distributed_rowgroup_audit (all {total_shards} shards, "
-                f"{row_groups_per_shard} distributed row groups per shard, "
-                f"no exclusions applied)"
-            )
+            if mode == "audit":
+                sampling_frame = (
+                    f"distributed_rowgroup_audit (all {total_shards} shards, "
+                    f"{row_groups_per_shard} distributed row groups per shard, "
+                    f"no exclusions applied)"
+                )
+            else:
+                sampling_frame = (
+                    f"distributed_rowgroup_candidate (all {total_shards} shards, "
+                    f"{row_groups_per_shard} distributed row groups per shard; "
+                    f"exclusion policy applied before sampling)"
+                )
         else:
             step = max(1, total_shards // num_shards_to_visit)
             selected_shards = [
@@ -520,10 +538,10 @@ class GigaVerboSampler(BaseSourceSampler):
         reservoir = DeterministicReservoirSampler(capacity=size, seed=seed)
         target_cols = ["id", "source", "subset", "edu_score", "text"]
 
-        subsets_before_exclusion: Dict[str, int] = {}
+        records_encountered_per_subset: Dict[str, int] = {}
         exclusion_counts_by_subset: Dict[str, int] = {}
         exclusion_rules_matched: Dict[str, str] = {}
-        subsets_after_exclusion: Dict[str, int] = {}
+        eligible_records_per_subset: Dict[str, int] = {}
         shard_row_groups_map: Dict[str, List[int]] = {}
 
         total_row_groups_visited = 0
@@ -571,11 +589,11 @@ class GigaVerboSampler(BaseSourceSampler):
                             scores = b_dict.get("edu_score", [])
 
                             for i in range(len(texts)):
-                                records_examined += 1
                                 text = texts[i]
                                 if not text or len(text.strip()) < 50:
                                     continue
 
+                                records_examined += 1
                                 subset = subsets[i] if i < len(subsets) else None
                                 doc_id = (
                                     str(ids[i])
@@ -586,8 +604,9 @@ class GigaVerboSampler(BaseSourceSampler):
                                 edu_sc = scores[i] if i < len(scores) else None
 
                                 subset_key = str(subset) if subset else "(null)"
-                                subsets_before_exclusion[subset_key] = (
-                                    subsets_before_exclusion.get(subset_key, 0) + 1
+                                records_encountered_per_subset[subset_key] = (
+                                    records_encountered_per_subset.get(subset_key, 0)
+                                    + 1
                                 )
 
                                 if mode == "candidate":
@@ -606,6 +625,10 @@ class GigaVerboSampler(BaseSourceSampler):
                                                 matched_rule
                                             )
                                         continue
+
+                                eligible_records_per_subset[subset_key] = (
+                                    eligible_records_per_subset.get(subset_key, 0) + 1
+                                )
 
                                 raw_doc = {
                                     "text": text,
@@ -626,10 +649,7 @@ class GigaVerboSampler(BaseSourceSampler):
                                 }
 
                                 norm_doc = validate_and_normalize(raw_doc)
-                                if reservoir.add(doc_id, norm_doc):
-                                    subsets_after_exclusion[subset_key] = (
-                                        subsets_after_exclusion.get(subset_key, 0) + 1
-                                    )
+                                reservoir.add(doc_id, norm_doc)
                                 rg_accepted += 1
                                 if rg_accepted >= max(10, quota_per_rg * 2):
                                     break
@@ -643,6 +663,16 @@ class GigaVerboSampler(BaseSourceSampler):
         documents = reservoir.get_sample()
         if len(documents) >= size:
             stopping_reason = "target_size_reached"
+
+        retained_sample_per_subset: Dict[str, int] = {}
+        for doc in documents:
+            s_key = str(doc.subset) if doc.subset else "(null)"
+            retained_sample_per_subset[s_key] = (
+                retained_sample_per_subset.get(s_key, 0) + 1
+            )
+
+        total_excluded = sum(exclusion_counts_by_subset.values())
+        eligible_records = records_examined - total_excluded
 
         parquet_path, manifest = self._persist_sample(
             documents=documents,
@@ -665,13 +695,17 @@ class GigaVerboSampler(BaseSourceSampler):
             exclusion_config_hash=config_sha,
         )
 
-        manifest.stats["subsets_before_exclusion"] = subsets_before_exclusion
-        manifest.stats["records_encountered_per_subset"] = subsets_before_exclusion
-        if mode == "candidate":
-            manifest.stats["exclusion_counts_by_subset"] = exclusion_counts_by_subset
-            manifest.stats["exclusion_rules_matched"] = exclusion_rules_matched
-            manifest.stats["subsets_after_exclusion"] = subsets_after_exclusion
-            manifest.stats["total_excluded"] = sum(exclusion_counts_by_subset.values())
+        manifest.stats["records_encountered_per_subset"] = (
+            records_encountered_per_subset
+        )
+        manifest.stats["subsets_before_exclusion"] = records_encountered_per_subset
+        manifest.stats["exclusion_counts_by_subset"] = exclusion_counts_by_subset
+        manifest.stats["exclusion_rules_matched"] = exclusion_rules_matched
+        manifest.stats["total_excluded"] = total_excluded
+        manifest.stats["eligible_records"] = eligible_records
+        manifest.stats["eligible_records_per_subset"] = eligible_records_per_subset
+        manifest.stats["subsets_after_exclusion"] = eligible_records_per_subset
+        manifest.stats["retained_sample_per_subset"] = retained_sample_per_subset
         manifest.stats["shards_visited"] = len(selected_shards)
         manifest.stats["row_groups_visited"] = total_row_groups_visited
         manifest.stats["selected_shards"] = [Path(s).name for s in selected_shards]

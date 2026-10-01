@@ -376,3 +376,273 @@ def test_audit_mode_does_not_apply_exclusions(monkeypatch, tmp_path):
     assert "bactrianx" in subsets_in_sample
     assert "fineweb_2_pt" in subsets_in_sample
     assert manifest.stats.get("total_excluded", 0) == 0
+
+
+def test_gigaverbo_candidate_visits_all_shards(monkeypatch, tmp_path):
+    """Verify that candidate mode visits ALL 56 available shards by default."""
+    from cambacica.corpus.sources import gigaverbo_v2 as gv_mod
+    from cambacica.corpus.sources.gigaverbo_v2 import GigaVerboSampler
+
+    shards_visited: list = []
+
+    class MockFS:
+        def ls(self, path, detail=False):
+            return [f"{path}/shard-{i:05d}-of-00056.parquet" for i in range(56)]
+
+        def open(self, path, mode="rb"):
+            return MockParquetContextManager(path, shards_visited)
+
+    class MockParquetContextManager:
+        def __init__(self, path, tracker):
+            self.path = path
+            self.tracker = tracker
+
+        def __enter__(self):
+            self.tracker.append(self.path)
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    def mock_parquet_file(f):
+        class _MockPF:
+            num_row_groups = 1
+
+            def iter_batches(self, batch_size=None, row_groups=None, columns=None):
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": [
+                            "Texto de exemplo com comprimento adequado para o GigaVerbo."
+                        ],
+                        "id": ["id_1"],
+                        "source": ["fineweb_2_pt"],
+                        "subset": ["fineweb_2_pt"],
+                        "edu_score": [3.5],
+                    }
+                )
+                return iter([batch])
+
+        return _MockPF()
+
+    monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
+    monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
+
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: MockFS())
+
+    sampler = GigaVerboSampler()
+    _, manifest = sampler.sample(
+        mode="candidate",
+        size=100,
+        seed=42,
+        output_dir=tmp_path / "gv_cand_56_shards",
+    )
+
+    # Candidate must visit all 56 shards by default
+    assert manifest.stats.get("shards_visited", 0) == 56, (
+        f"Candidate mode must visit all 56 shards, got {manifest.stats.get('shards_visited')}"
+    )
+
+
+def test_candidate_manifest_statistics_invariants(monkeypatch, tmp_path):
+    """Verify the four manifest statistics invariants in candidate mode.
+
+    Invariants tested:
+    1. sum(records_encountered_per_subset) == records_examined
+    2. eligible_records == records_examined - total_excluded
+    3. sum(eligible_records_per_subset) == eligible_records
+    4. sum(retained_sample_per_subset) == final sample size
+    """
+    from cambacica.corpus.sources import gigaverbo_v2 as gv_mod
+    from cambacica.corpus.sources.gigaverbo_v2 import GigaVerboSampler
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    class MockFS:
+        def ls(self, path, detail=False):
+            return [f"{path}/shard-00000-of-00056.parquet"]
+
+        def open(self, path, mode="rb"):
+            return MockParquetCtx(path)
+
+    class MockParquetCtx:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_parquet_file(f):
+        class _MockPF:
+            num_row_groups = 2
+
+            def iter_batches(self, batch_size=None, row_groups=None, columns=None):
+                rg = row_groups[0] if row_groups else 0
+                # Generate 20 records: 6 blocked (bactrianx, ultrachat), 14 allowed
+                texts = [
+                    f"Texto longo de teste em português com mais de 50 caracteres para validade doc {rg}_{i}."
+                    for i in range(20)
+                ]
+                ids = [f"id_{rg}_{i}" for i in range(20)]
+                subsets = (
+                    ["bactrianx"] * 3
+                    + ["ultrachat"] * 3
+                    + ["fineweb_2_pt"] * 8
+                    + ["mc4_pt"] * 6
+                )
+                sources = list(subsets)
+                scores = [3.0] * 20
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": texts,
+                        "id": ids,
+                        "source": sources,
+                        "subset": subsets,
+                        "edu_score": scores,
+                    }
+                )
+                return iter([batch])
+
+        return _MockPF()
+
+    monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
+    monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
+
+    target_size = 5
+    sampler = GigaVerboSampler()
+    p_path, manifest = sampler.sample(
+        mode="candidate",
+        size=target_size,
+        seed=42,
+        output_dir=tmp_path / "gv_invariants_cand",
+        row_groups_per_shard=2,
+    )
+
+    stats = manifest.stats
+    records_examined = manifest.records_examined
+    total_excluded = stats["total_excluded"]
+    eligible_records = stats["eligible_records"]
+    final_sample_size = manifest.document_count
+
+    # Invariant 1: sum(records_encountered_per_subset) == records_examined
+    encountered = stats["records_encountered_per_subset"]
+    assert sum(encountered.values()) == records_examined
+
+    # Invariant 2: eligible_records == records_examined - total_excluded
+    assert eligible_records == records_examined - total_excluded
+    assert total_excluded > 0, "Expected exclusions from bactrianx and ultrachat"
+
+    # Invariant 3: sum(eligible_records_per_subset) == eligible_records
+    eligible_map = stats["eligible_records_per_subset"]
+    assert sum(eligible_map.values()) == eligible_records
+
+    # Invariant 4: sum(retained_sample_per_subset) == final sample size
+    retained_map = stats["retained_sample_per_subset"]
+    assert sum(retained_map.values()) == final_sample_size
+    assert final_sample_size == target_size
+
+    # subsets_after_exclusion must match eligible_records_per_subset (not reservoir behavior)
+    assert stats["subsets_after_exclusion"] == eligible_map
+    assert sum(stats["subsets_after_exclusion"].values()) == eligible_records
+
+    # Blocked subsets must not appear in eligible or retained
+    assert "bactrianx" not in eligible_map
+    assert "ultrachat" not in eligible_map
+    assert "bactrianx" not in retained_map
+    assert "ultrachat" not in retained_map
+
+
+def test_audit_manifest_statistics_invariants(monkeypatch, tmp_path):
+    """Verify the four manifest statistics invariants in audit mode.
+
+    In audit mode:
+    - total_excluded == 0
+    - eligible_records == records_examined
+    - all 4 invariants hold identically
+    """
+    from cambacica.corpus.sources import gigaverbo_v2 as gv_mod
+    from cambacica.corpus.sources.gigaverbo_v2 import GigaVerboSampler
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    class MockFS:
+        def ls(self, path, detail=False):
+            return [f"{path}/shard-00000-of-00056.parquet"]
+
+        def open(self, path, mode="rb"):
+            return MockParquetCtx(path)
+
+    class MockParquetCtx:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_parquet_file(f):
+        class _MockPF:
+            num_row_groups = 1
+
+            def iter_batches(self, batch_size=None, row_groups=None, columns=None):
+                texts = [
+                    f"Texto longo de exemplo em português para o teste de audit doc {i}."
+                    for i in range(15)
+                ]
+                ids = [f"id_{i}" for i in range(15)]
+                subsets = ["bactrianx"] * 5 + ["fineweb_2_pt"] * 10
+                sources = list(subsets)
+                scores = [3.0] * 15
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": texts,
+                        "id": ids,
+                        "source": sources,
+                        "subset": subsets,
+                        "edu_score": scores,
+                    }
+                )
+                return iter([batch])
+
+        return _MockPF()
+
+    monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
+    monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
+
+    sampler = GigaVerboSampler()
+    p_path, manifest = sampler.sample(
+        mode="audit",
+        size=4,
+        seed=42,
+        output_dir=tmp_path / "gv_invariants_audit",
+        row_groups_per_shard=1,
+    )
+
+    stats = manifest.stats
+    records_examined = manifest.records_examined
+    total_excluded = stats.get("total_excluded", 0)
+    eligible_records = stats["eligible_records"]
+    final_sample_size = manifest.document_count
+
+    assert total_excluded == 0
+    assert eligible_records == records_examined
+
+    # Invariant 1
+    assert sum(stats["records_encountered_per_subset"].values()) == records_examined
+    # Invariant 2
+    assert eligible_records == records_examined - total_excluded
+    # Invariant 3
+    assert sum(stats["eligible_records_per_subset"].values()) == eligible_records
+    # Invariant 4
+    assert sum(stats["retained_sample_per_subset"].values()) == final_sample_size

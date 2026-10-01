@@ -150,6 +150,45 @@ def handle_sample(args: argparse.Namespace) -> int:
         return 1
 
 
+def find_sample_parquet_files(target: Path) -> List[Path]:
+    """Discover Parquet sample files, ignoring test and smoke directories.
+
+    Parameters
+    ----------
+    target : Path
+        Path to Parquet file or directory.
+
+    Returns
+    -------
+    list of Path
+        Sorted list of discovered Parquet files.
+    """
+    if target.is_file() and target.suffix == ".parquet":
+        return [target]
+    if not target.is_dir():
+        return []
+
+    found = []
+    for p in target.glob("**/*.parquet"):
+        parts = [part.lower() for part in p.parts]
+        if any(
+            part in ("tests", "test", "smoke", "temp", "tmp", "scratch")
+            or part.startswith("smoke_")
+            or part.startswith("test_")
+            or part.startswith("tmp_")
+            for part in parts
+        ):
+            continue
+        if (
+            len(p.parts) >= 3
+            and p.parent.name in ("audit", "candidate")
+            and p.parent.parent.name == "gigaverbo_v2"
+        ):
+            continue
+        found.append(p)
+    return sorted(found)
+
+
 def handle_inspect(args: argparse.Namespace) -> int:
     """Handle the 'inspect' subcommand.
 
@@ -164,17 +203,12 @@ def handle_inspect(args: argparse.Namespace) -> int:
         Exit code.
     """
     target = Path(args.path)
-    parquet_files: List[Path] = []
-
-    if target.is_file() and target.suffix == ".parquet":
-        parquet_files.append(target)
-    elif target.is_dir():
-        parquet_files.extend(sorted(target.glob("**/*.parquet")))
-    else:
-        print(f"[ERROR] Target path '{target}' is not a Parquet file or directory.")
-        return 1
+    parquet_files = find_sample_parquet_files(target)
 
     if not parquet_files:
+        if not target.exists():
+            print(f"[ERROR] Target path '{target}' is not a Parquet file or directory.")
+            return 1
         print(f"[WARNING] No .parquet files found in '{target}'.")
         return 0
 
@@ -222,7 +256,7 @@ def handle_compare(args: argparse.Namespace) -> int:
         print(f"[ERROR] Target '{target_dir}' is not a directory.")
         return 1
 
-    parquet_files = sorted(target_dir.glob("**/*.parquet"))
+    parquet_files = find_sample_parquet_files(target_dir)
     if len(parquet_files) < 2:
         print(
             f"[WARNING] Need at least 2 Parquet files to compare, "
