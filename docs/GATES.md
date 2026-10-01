@@ -37,8 +37,22 @@ Deve incluir:
 - conjunto de validação separado do treino.
 
 Progresso atual:
-- Inventário de fontes concluído;
-- Pipeline de amostragem determinística e inspeção diagnóstica implementado (`docs/CORPUS_SAMPLING.md`).
+
+- inventário de fontes concluído;
+- pipeline de amostragem determinística e inspeção diagnóstica implementado (`docs/CORPUS_SAMPLING.md`);
+- resultados da primeira rodada de caracterização registrados (`docs/C1_SAMPLING_RESULTS.md`);
+- infraestrutura de sampling considerada estável para o escopo atual;
+- estudo de composição do corpus iniciado (`docs/C1_CORPUS_COMPOSITION_STUDY.md`).
+
+Próximos critérios de C1:
+
+- selecionar fontes finais e revisões pinned;
+- congelar políticas de idioma, qualidade e licença;
+- definir e executar deduplicação global;
+- definir decontaminação de benchmarks;
+- comparar composições candidatas do corpus;
+- definir split train/validation/test reproduzível;
+- produzir manifests e estatísticas finais para a interface com C2.
 
 Status: **IN PROGRESS**
 
