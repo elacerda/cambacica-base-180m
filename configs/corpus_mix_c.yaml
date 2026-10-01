@@ -1,0 +1,75 @@
+# Provisional Gate C1 Corpus Mixture Specification: Candidate C (Residual-Heavy Control)
+# Project: cambacica-base-180m
+# Gate: C1 (CORPUS)
+# Status: provisional
+
+schema_version: 1
+gate: "C1"
+name: "corpus_mix_c"
+label: "residual-heavy control"
+status: "provisional"
+mixture_unit: "normalized_words"
+mixture_unit_description: >
+  provisional share of normalized text volume; C1 proxy measured in words,
+  not final tokenizer tokens
+
+sources:
+  carolina:
+    share: 0.12
+    repository: "carolina-c4ai/corpus-carolina"
+    revision: "v2.0.1"
+    commit_sha: "55e63a519393c70a48dcfa14a558499c6bb0583b"
+    role: "Core syntactic and lexical anchor for contemporary Brazilian Portuguese across diverse genres."
+
+  wikipedia_pt:
+    share: 0.07
+    repository: "wikimedia/wikipedia"
+    config: "20231101.pt"
+    commit_sha: "b04c8d1ceb2f5cd4588862100d08de323dccfbaa"
+    role: "Factual knowledge anchor and structured expository prose."
+
+  parlamento_pt:
+    share: 0.04
+    repository: "PORTULAN/parlamento-pt"
+    commit_sha: "08f13e7e63ab9bfbd8c0b40955defe3bb7f68c2b"
+    role: "European Portuguese syntactic anchor, formal parliamentary rhetoric, and institutional debate."
+
+  gutenberg_pt:
+    share: 0.02
+    repository: "project_gutenberg_pt"
+    snapshot_date: "2026-10-01"
+    catalog_query: "browse/languages/pt"
+    catalog_size_ebooks: 655
+    provenance_note: >
+      Project acquisition snapshot based on Portuguese language catalog query as of
+      2026-10-01 (655 eligible eBooks); project acquisition snapshot, not an immutable
+      upstream Git commit as upstream does not provide one.
+    role: "Morphological richness, complex subordinate syntax, and classic literary vocabulary."
+
+  gigaverbo_v2_residual:
+    share: 0.75
+    repository: "Polygl0t/gigaverbo-v2"
+    split: "edu_high"
+    commit_sha: "7058ccf19eaeaf4505a96fc7e5305a01fc441fd8"
+    exclusions_config: "configs/gigaverbo_exclusions.yaml"
+    weights_nature: "provisional_scientific_weights"
+    weights_description: >
+      Provisional scientific weights allocating residual share across surviving subsets;
+      deliberate experimental allocation, not measured upstream prevalence.
+    role: "Thematic coverage, contemporary technological terminology, and controlled web reservoir."
+    subsets:
+      # Bucket 1: Formal / Technical (functional source of formal/scientific/technical prose; not provenance-equivalent to SciELO/BDTD)
+      finepdfs_por_Latn: 0.30
+      # Bucket 2: Curated & Native Portuguese Web
+      crawlPT_dedup: 0.10  # Neutral Portuguese web (.pt domain); provenance does not establish a national variety
+      quati: 0.05
+      blogset: 0.05
+      # Bucket 3: Modern General Web
+      fineweb_2_pt: 0.35
+      # Bucket 4: Legacy Web (strictly capped)
+      mc4_pt: 0.05
+      hplt2_pt: 0.05
+      hplt1_pt: 0.02
+      common_crawl: 0.01
+      oscar: 0.01
+      culturax: 0.01

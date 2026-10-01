@@ -42,7 +42,11 @@ Progresso atual:
 - pipeline de amostragem determinística e inspeção diagnóstica implementado (`docs/CORPUS_SAMPLING.md`);
 - resultados da primeira rodada de caracterização registrados (`docs/C1_SAMPLING_RESULTS.md`);
 - infraestrutura de sampling considerada estável para o escopo atual;
-- estudo de composição do corpus iniciado (`docs/C1_CORPUS_COMPOSITION_STUDY.md`).
+- estudo de composição do corpus iniciado (`docs/C1_CORPUS_COMPOSITION_STUDY.md`);
+- análise científica de composição, caracterização das 5 famílias e propostas A/B/C concluídas (`docs/C1_COMPOSITION_ANALYSIS.md`);
+- especificações de misturas candidatas A/B/C versionadas como hipóteses experimentais provisórias (`configs/corpus_mix_*.yaml`);
+- plano de materialização seletiva em storage `/mnt/data` documentado (`configs/corpus_materialization.yaml`);
+- próximo passo: materialização seletiva e construção dos pools de fontes candidatas normalizadas.
 
 Próximos critérios de C1:
 

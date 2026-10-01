@@ -378,6 +378,49 @@ def handle_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_validate_mixes(args: argparse.Namespace) -> int:
+    """Handle the 'validate-mixes' subcommand.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments.
+
+    Returns
+    -------
+    int
+        Exit code (0 for success, 1 for failure).
+    """
+    from cambacica.corpus.mix import MixValidationError, validate_mix_files
+
+    files = args.files or [
+        "configs/corpus_mix_a.yaml",
+        "configs/corpus_mix_b.yaml",
+        "configs/corpus_mix_c.yaml",
+    ]
+    print(
+        f"--> Validating {len(files)} Gate C1 candidate corpus mixture configuration(s)..."
+    )
+    try:
+        validated_configs = validate_mix_files(files)
+        for path_str, cfg in zip(files, validated_configs):
+            name = cfg.get("name", "unknown")
+            label = cfg.get("label", "unknown")
+            sources = cfg.get("sources", {})
+            shares = {k: v.get("share") for k, v in sources.items()}
+            print(f"  [PASS] {path_str} ({name} — {label})")
+            for src_k, share_v in shares.items():
+                print(f"         - {src_k}: {share_v:.2%}")
+        print("--> All mixture configurations passed Gate C1 scientific validation.")
+        return 0
+    except MixValidationError as err:
+        print(f"[ERROR] Mix validation failed: {err}", file=sys.stderr)
+        return 1
+    except Exception as err:
+        print(f"[ERROR] Unexpected error during mix validation: {err}", file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build command-line parser.
 
@@ -498,6 +541,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="MinHash Jaccard threshold (default: 0.80).",
     )
 
+    # Subcommand: validate-mixes
+    val_parser = subparsers.add_parser(
+        "validate-mixes",
+        help="Validate Gate C1 candidate corpus mixture configuration files.",
+    )
+    val_parser.add_argument(
+        "files",
+        nargs="*",
+        default=[
+            "configs/corpus_mix_a.yaml",
+            "configs/corpus_mix_b.yaml",
+            "configs/corpus_mix_c.yaml",
+        ],
+        help="Paths to mix YAML config files to validate (default: configs/corpus_mix_[a,b,c].yaml).",
+    )
+
     return parser
 
 
@@ -523,6 +582,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_inspect(args)
     elif args.subcommand == "compare":
         return handle_compare(args)
+    elif args.subcommand == "validate-mixes":
+        return handle_validate_mixes(args)
     return 1
 
 
