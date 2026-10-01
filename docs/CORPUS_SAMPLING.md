@@ -17,190 +17,220 @@ modelo `cambacica-base-180m`.
 
 Conforme estabelecido em [`docs/CORPUS.md`](CORPUS.md), o Cambacica prioriza
 qualidade sobre volume e proveniência sobre conveniência. Antes de decidir
-orçamentos de tokens ou pesos entre fontes para um modelo causal de $\le$ 200M
+orçamentos de tokens ou pesos entre fontes para um modelo causal de <= 200M
 parâmetros, precisamos auditar o conteúdo real de cada repositório.
 
 Amostragens preliminares permitem:
-1. Validar taxonomias e metadados sem baixar centenas de gigabytes;
-2. Medir distribuições de comprimento de documento e taxas de caracteres alfabéticos;
-3. Auditar a presença de tradução automática identificável e resíduos multilíngues;
-4. Identificar overlaps e duplicatas exatas entre fontes primárias e coleções agregadoras;
-5. Preparar dados para o Gate C2 (treinamento e análise de tokenizer).
+
+1. validar taxonomias e metadados sem baixar centenas de gigabytes;
+2. medir distribuições de comprimento e taxas de caracteres alfabéticos;
+3. auditar tradução automática identificável e resíduos multilíngues;
+4. identificar overlaps e duplicatas entre fontes primárias e agregadores;
+5. preparar dados para o Gate C2.
 
 ---
 
-## 2. Princípio científico: Representativo vs. Diagnóstico
+## 2. Princípio científico: representativo vs. diagnóstico
 
-A pipeline faz uma distinção estrita e obrigatória entre dois modos de amostragem:
+A pipeline distingue explicitamente dois usos.
 
-### A. Amostra Representativa (`representative`)
-- **Objetivo:** Amostrar a distribuição real e proporções naturais do repositório upstream.
-- **Mecanismo:** Amostragem determinística baseada no hash estável do identificador (`stable_hash64(doc_id, seed)`).
-- **Semântica e Escopo da População:**
-  * Quando a população total pode ser enumerada sem transferência excessiva (como o catálogo de literatura do Gutenberg com ~655–787 obras), o reservatório opera sobre **todo o catálogo**, sendo genuinamente representativo do repositório completo.
-  * Quando a fonte é massiva e o streaming completo consumiria gigabytes/terabytes desnecessários (como Wikipédia com 1,18M artigos ou ParlamentoPT com 11,5M intervenções), o sampler opera sobre um **`bounded_stream_prefix`** (prefixo delimitado do fluxo). Esse limite de varredura é explicitamente registrado no manifesto (`sampling_frame`) e jamais descrito como uma amostra globalmente representativa de todo o histórico.
-  * Para fontes particionadas em múltiplos shards (como GigaVerbo com 56 shards e Carolina com 823 arquivos), a amostragem adota uma moldura determinística entre partições (`deterministic_shard_subsample` ou `deterministic_shard_partition`), distribuindo a colheita entre múltiplos shards e taxonomias.
+### A. Amostra representativa (`representative`)
 
-### B. Amostra Diagnóstica Estratificada (`diagnostic`)
-- **Objetivo:** Forçar a exposição de minorias linguísticas, jurídicas, legislativas ou acadêmicas para inspeção qualitativa humana.
-- **Mecanismo:** Amostragem estratificada (`StratifiedSampler`) com cotas mínimas fixadas por taxonomia/domínio.
-- **Regra:** Amostras representativas e diagnósticas **nunca devem ser mescladas ou confundidas**.
+O objetivo é aproximar a distribuição natural da população definida pelo
+sampler, sempre registrando a moldura amostral real no manifesto.
+
+Quando a população completa pode ser enumerada de forma barata, a amostragem
+pode operar sobre todo o catálogo. Quando isso não é viável, o manifesto deve
+identificar explicitamente o limite, por exemplo `bounded_stream_prefix`.
+
+No Corpus Carolina, a alocação representativa entre taxonomias usa as contagens
+documentadas do v2.0.1 e largest remainder determinístico.
+
+### B. Amostra diagnóstica (`diagnostic`, `audit`)
+
+O objetivo é expor domínios minoritários, anomalias ou diversidade física do
+upstream para inspeção. Ela não deve ser interpretada automaticamente como
+estimativa estatística da população completa.
+
+Amostras representativas e diagnósticas nunca devem ser confundidas ou
+concatenadas como se fossem o corpus final.
 
 ---
 
 ## 3. Fontes suportadas nesta fase
 
-| Fonte | Identificador Upstream | Modos Disponíveis | Padrão (Docs) | Estratégia de Acesso e Moldura |
-| :--- | :--- | :--- | :--- | :--- |
-| **Corpus Carolina** | `carolina-c4ai/corpus-carolina` | `representative`, `diagnostic` | 10.000 / 10.000 | Streaming XML TEI P5 (`deterministic_shard_partition` entre 7 taxonomias: `wik`, `dat`, `jud`, `leg`, `uni`, `soc`, `pub`) |
-| **Wikipédia em português** | `wikimedia/wikipedia` (`20231101.pt`) | `representative` | 10.000 | Streaming via Hugging Face Hub sobre `bounded_stream_prefix` (primeiros 30.000 artigos) |
-| **ParlamentoPT** | `PORTULAN/parlamento-pt` | `representative` | 10.000 | Streaming HTTP sobre `bounded_stream_prefix` (primeiras 40.000 linhas); preserva falas curtas por padrão |
-| **GigaVerbo-v2** | `Polygl0t/gigaverbo-v2` (`edu_high`) | `audit`, `candidate` | 25.000 / 25.000 | `deterministic_shard_subsample` (8 de 56 shards Parquet uniformemente distribuídos) com exclusão versionada |
-| **Literatura em Domínio Público** | `project_gutenberg_pt` | `representative` | ~100 obras | `full_catalog_hash_reservoir` sobre todo o catálogo de ~655 obras PT; remoção de boilerplate |
+| Fonte | Identificador upstream | Modos | Padrão | Moldura atual |
+| --- | --- | --- | ---: | --- |
+| Corpus Carolina | `carolina-c4ai/corpus-carolina` | `representative`, `diagnostic` | 10.000 / 10.000 | alocação proporcional por taxonomia + shards distribuídos; cotas explícitas no modo diagnóstico |
+| Wikipédia PT | `wikimedia/wikipedia` (`20231101.pt`) | `representative` | 10.000 | `bounded_stream_prefix` sobre até 30.000 artigos |
+| ParlamentoPT | `PORTULAN/parlamento-pt` | `representative` | 10.000 | `bounded_stream_prefix` sobre até 40.000 linhas; falas curtas preservadas |
+| GigaVerbo-v2 | `Polygl0t/gigaverbo-v2` (`edu_high`) | `audit`, `candidate` | 25.000 / 25.000 | todos os 56 shards, com row groups deterministicamente distribuídos; exclusões aplicadas antes do reservatório no modo candidate |
+| Project Gutenberg PT | catálogo em português | `representative` | ~100 obras | reservatório determinístico sobre o catálogo elegível, com remoção de boilerplate |
 
-### Fontes em Segunda Rodada ou Fora de Escopo
-- **Ulysses / Tesemõ:** Segunda rodada. Exige espelhamento local prévio a partir dos arquivos do Google Drive, pois o repositório git upstream contém apenas documentação.
-- **SciELO:** Segunda rodada. Exige rotina de colheita estruturada via ArticleMeta API / OAI-PMH.
-- **BDTD e FineWeb-2:** Fora de escopo inicial do C1. O BDTD descentralizado em ~130 universidades impõe sobrecarga de PDF/OCR excessiva para esta fase.
+Fontes de segunda rodada: Ulysses/Tesemõ e SciELO. BDTD direto e FineWeb-2
+direto permanecem fora do caminho principal enquanto não houver uma necessidade
+científica concreta.
 
 ---
 
-## 4. Política do GigaVerbo-v2: Audit vs. Candidate
+## 4. Política do GigaVerbo-v2: audit vs. candidate
 
-O `Polygl0t/gigaverbo-v2` é tratado sob dois modos mutuamente exclusivos:
+O GigaVerbo-v2 é tratado como reservatório, não como corpus a ser concatenado
+integralmente.
 
-1. **`gigaverbo_audit` (`--mode audit`):**
-   - Amostra diretamente da partição `edu_high` sem descartar nenhum subset upstream.
-   - Permite inspecionar o que efetivamente existe no dataset original (inclusive resíduos traduzidos ou não comerciais).
+A revisão pinned usada no C1 é:
 
-2. **`gigaverbo_candidate` (`--mode candidate`):**
-   - Aplica a política de exclusão versionada em [`configs/gigaverbo_exclusions.yaml`](../configs/gigaverbo_exclusions.yaml).
-   - Descarta sistematicamente subsets deliberadamente traduzidos por máquina (`dolly-15k-libretranslate-pt`, `Bactrian-X`, `UltrachatBR`, `cosmos_qa_ptbr`, `gpt4all`), subsets com licença não comercial (`xlsum`, `Bactrian-X`) e duplicações de fontes já presentes no Cambacica (`corpus-carolina`, `wikipedia`, `bdtd`, `baixelivros`).
-   - Visita múltiplos shards Parquet distribuídos ao longo da partição `edu_high`.
+`Polygl0t/gigaverbo-v2@7058ccf19eaeaf4505a96fc7e5305a01fc441fd8`
+
+Os Parquets apresentam clustering físico por subset. Por isso, visitar muitos
+shards mas ler apenas seus primeiros registros produz uma visão enviesada.
+
+### `audit`
+
+- visita todos os 56 shards;
+- seleciona row groups distribuídos entre regiões físicas iniciais,
+  intermediárias e finais;
+- não aplica exclusões;
+- existe para revelar a diversidade física e validar as hipóteses sobre o
+  upstream.
+
+### `candidate`
+
+- usa a mesma cobertura distribuída dos 56 shards;
+- aplica [`configs/gigaverbo_exclusions.yaml`](../configs/gigaverbo_exclusions.yaml)
+  antes da inserção no `DeterministicReservoirSampler`;
+- registra contagens por subset antes da exclusão, exclusões efetivas, registros
+  elegíveis e composição final do reservatório.
+
+O manifesto mantém as seguintes invariantes:
+
+```text
+sum(records_encountered_per_subset) == records_examined
+eligible_records == records_examined - total_excluded
+sum(eligible_records_per_subset) == eligible_records
+sum(retained_sample_per_subset) == final_sample_size
+```
+
+A auditoria da revisão pinned confirmou subsets explicitamente traduzidos,
+sintéticos, não comerciais ou sobrepostos a fontes primárias, incluindo
+`ultrachat`, `bactrianx`, `cosmos_qa`, `gpt4all`, `xlsum`, `wikipedia` e
+`corpus_carolina`.
 
 > [!WARNING]
-> A exclusão por metadados filtra apenas subsets catalogados. A presença de tradução automática latente dentro de scrapes gerais da web (Common Crawl) permanece como uma incógnita mensurável.
+> Exclusão por metadata remove apenas subsets conhecidos. Tradução automática
+> latente dentro de web crawls continua sendo uma incerteza do C1.
 
 ---
 
-## 5. Esquema unificado (Parquet)
+## 5. Esquema unificado
 
-Todos os extratores normalizam seus registros no esquema PyArrow canônico de 14 campos:
+Todos os extratores normalizam registros em um esquema PyArrow comum contendo:
 
-| Campo | Tipo | Descrição |
-| :--- | :--- | :--- |
-| `text` | string (não-nulo) | Texto normalizado em Unicode NFC com espaços aparados |
-| `source` | string (não-nulo) | Identificador canônico da fonte (`carolina`, `wikipedia_pt`, etc.) |
-| `source_revision` | string (nulo) | Versão upstream (ex: `v2.0.1`, `20231101.pt`, data de snapshot) |
-| `subset` | string (nulo) | Sub-partição upstream (ex: taxonomia `jud`, subset `fineweb_2_pt`) |
-| `original_id` | string (nulo) | Identificador original no dataset upstream |
-| `original_url` | string (nulo) | URL canônica do documento |
-| `license` | string (nulo) | Licença aplicável (estritamente preservada conforme upstream; `None` se não rotulado linha a linha) |
-| `language` | string (nulo) | Rótulo de idioma documentado (ex: `pt`, `pt-BR`, `pt-PT`) |
-| `language_score` | float32 (nulo) | Confiança do detector de idioma upstream |
-| `variety` | string (nulo) | Variedade linguisticamente documentada (`pt-BR`, `pt-PT`) |
-| `quality_score` | float32 (nulo) | Escore educacional ou de qualidade upstream |
-| `publication_date` | string (nulo) | Data ou ano de publicação original |
-| `domain_category` | string (nulo) | Classificação temática ou tipológica |
-| `content_sha256` | string (não-nulo) | Hash SHA-256 do texto normalizado calculado localmente |
+- `text`;
+- `source`;
+- `source_revision`;
+- `subset`;
+- `original_id`;
+- `original_url`;
+- `license`;
+- `language`;
+- `language_score`;
+- `variety`;
+- `quality_score`;
+- `publication_date`;
+- `domain_category`;
+- `content_sha256`.
 
-Metadados ausentes são representados estritamente como nulos (`None`), evitando a fabricação de dados. Em particular:
-- Registros do GigaVerbo possuem `license = None` (já que o repositório upstream não fornece licença por linha individual).
-- Registros do Gutenberg são anotados como `"Project Gutenberg License / US Public Domain (jurisdiction-dependent)"`, evitando a generalização indevida para domínio público mundial irrestrito.
-- Registros do Carolina preservam a licença declarada no cabeçalho TEI ou `"Unspecified / Source-specific (see TEI header)"`.
+Metadados ausentes permanecem nulos; o pipeline não fabrica valores.
 
 ---
 
 ## 6. Manifesto de proveniência
 
-Cada execução grava um arquivo `manifest_<mode>.json` ao lado do `.parquet`, registrando:
-- Fonte, modo, tamanho solicitado e contagem real de documentos;
-- Seed determinística;
-- Identificador upstream, revisão legível e commit SHA exato e imutável (quando disponível);
-- `population_scope`: estimativa ou contagem total da população upstream;
-- `sampling_frame`: descrição explícita da moldura amostral (ex: prefixo delimitado vs. reservatório do catálogo integral);
-- `records_examined`: total de registros avaliados no upstream durante a varredura;
-- `bytes_read`: bytes transferidos pela rede ou lidos em disco;
-- `stopping_reason`: motivo de finalização da colheita;
-- Hash SHA-256 do arquivo de configuração de exclusões (quando aplicável);
-- Commit Git do código executor local;
-- Checksum SHA-256 e tamanho em bytes do arquivo Parquet gerado;
-- Estatísticas agregadas de caracteres, palavras e listas de IDs (ex: `selected_ebook_ids`).
+Cada execução registra, quando aplicável:
+
+- fonte, modo, seed e tamanho solicitado/obtido;
+- identificador upstream e revisão imutável;
+- `population_scope` e `sampling_frame`;
+- `records_examined`, `bytes_read` e `stopping_reason`;
+- shards e row groups selecionados;
+- hash da configuração de exclusões;
+- commit Git do código local;
+- checksum do Parquet gerado;
+- estatísticas agregadas e contagens por subset.
+
+No GigaVerbo candidate são registrados explicitamente:
+
+- `records_encountered_per_subset`;
+- `exclusion_counts_by_subset`;
+- `eligible_records_per_subset`;
+- `retained_sample_per_subset`;
+- `exclusion_rules_matched`;
+- `total_excluded`.
 
 ---
 
-## 7. Como executar
+## 7. CLI
 
-### Planejamento e Dry-Run (Visibilidade sem Download)
-
-É possível planejar a amostragem antes de baixar qualquer dado utilizando o argumento `--dry-run`:
+### Dry-run
 
 ```bash
-# Verificar plano, revisão resolvida, moldura amostral e limites de segurança
 python3 -m cambacica.corpus sample carolina --dry-run
 python3 -m cambacica.corpus sample gigaverbo_v2 --mode candidate --dry-run
 python3 -m cambacica.corpus sample parlamento_pt --dry-run
 ```
 
-### Amostragem Efetiva
-
-A amostragem pode ser invocada via módulo Python ou pelo utilitário em `scripts/`:
+### Amostragem
 
 ```bash
-# Corpus Carolina — Amostra representativa (10.000 documentos)
 python3 -m cambacica.corpus sample carolina --mode representative --size 10000 --seed 42
-
-# Corpus Carolina — Amostra diagnóstica estratificada (10.000 documentos)
 python3 -m cambacica.corpus sample carolina --mode diagnostic --size 10000 --seed 42
-
-# Wikipédia em português — Amostra representativa (10.000 artigos)
 python3 -m cambacica.corpus sample wikipedia_pt --mode representative --size 10000 --seed 42
-
-# ParlamentoPT — Amostra representativa de debates em PT-PT (10.000 documentos)
-# Por padrão, preserva todas as falas válidas (min_length=0). Filtro de comprimento opcional via --min-length
 python3 -m cambacica.corpus sample parlamento_pt --mode representative --size 10000 --seed 42
-
-# GigaVerbo-v2 — Amostra candidata filtrada (25.000 documentos)
-python3 -m cambacica.corpus sample gigaverbo_v2 --mode candidate --size 25000 --seed 42
-
-# GigaVerbo-v2 — Amostra de auditoria sem filtros (25.000 documentos)
 python3 -m cambacica.corpus sample gigaverbo_v2 --mode audit --size 25000 --seed 42
-
-# Literatura em Domínio Público — Gutenberg PT (~100 obras completas)
+python3 -m cambacica.corpus sample gigaverbo_v2 --mode candidate --size 25000 --seed 42
 python3 -m cambacica.corpus sample gutenberg_pt --mode representative --size 100 --seed 42
 ```
 
-### Inspeção diagnóstica
-
-Para analisar métricas de comprimento, taxa de caracteres alfabéticos, duplicatas exatas internas e distribuição de metadados:
+### Inspeção e overlap
 
 ```bash
-# Inspecionar uma amostra específica
-python3 -m cambacica.corpus inspect data/samples/gate_c1/carolina/representative.parquet
-
-# Inspecionar todas as amostras existentes no diretório
 python3 -m cambacica.corpus inspect data/samples/gate_c1/
-
-# Obter relatório em formato JSON estruturado
-python3 -m cambacica.corpus inspect data/samples/gate_c1/carolina/representative.parquet --json
-```
-
-### Comparação inter-fontes (Detecção de Overlap)
-
-Para verificar colisão de documentos idênticos entre fontes diferentes (por exemplo, documentos do Carolina presentes dentro do GigaVerbo):
-
-```bash
-# Diagnóstico de duplicatas exatas entre amostras
 python3 -m cambacica.corpus compare data/samples/gate_c1/
-
-# Diagnóstico de quase-duplicatas via MinHash LSH (Jaccard >= 0.80)
 python3 -m cambacica.corpus compare data/samples/gate_c1/ --minhash --threshold 0.80
 ```
 
+A descoberta de arquivos persistentes ignora artefatos de smoke/test/temp; esses
+artefatos devem ser gravados fora da árvore científica persistente.
+
 ---
 
-## 8. Limitações atuais
+## 8. Semântica de duplicação
 
-1. **Tradução latente em dados web:** O filtro de exclusão do GigaVerbo remove datasets catalogados de tradução automática, mas não detecta eventuais traduções não sinalizadas presentes no Common Crawl.
-2. **Distribuição dialetal em fontes pluricêntricas:** A Wikipédia em português não rotula artigos por variedade (PT-BR vs. PT-PT vs. PALOP); a identificação dialetal precisa ser avaliada experimentalmente.
-3. **Prefixos delimitados de fluxo:** As amostragens representativas sobre Wikipédia e ParlamentoPT limitam a varredura a um prefixo inicial do fluxo de streaming para evitar transferência desproporcional. Essas amostras representam a distribuição desse prefixo sequencial, não uma seleção pseudo-aleatória sobre a totalidade histórica absoluta das fontes.
+O relatório de comparação separa:
+
+- `WITHIN_FILE`: repetições dentro do mesmo sample;
+- `SAME_SOURCE_CROSS_MODE`: overlap esperado entre modos da mesma fonte;
+- `CROSS_SOURCE`: colisões entre fontes upstream diferentes.
+
+A mesma classificação é aplicada aos diagnósticos de near-duplicate por
+MinHash. Resultados nulos devem ser reportados explicitamente.
+
+---
+
+## 9. Limitações atuais
+
+1. **Tradução latente em web:** o filtro do GigaVerbo remove subsets catalogados,
+   mas não prova que scrapes gerais estejam livres de tradução.
+2. **Dialetos em fontes pluricêntricas:** Wikipédia não fornece PT-BR/PT-PT/PALOP
+   por artigo.
+3. **Prefixos delimitados:** Wikipédia e ParlamentoPT ainda usam frames de
+   prefixo limitado para a amostragem de inspeção.
+4. **Amostras não substituem deduplicação global:** ausência de overlap nas
+   amostras não demonstra ausência na população completa.
+5. **Frequências do GigaVerbo diagnostic não são pesos de corpus:** a seleção de
+   row groups é desenhada para cobertura física reproduzível, não para estimar
+   imparcialmente a prevalência global de cada subset.
+
+Resultados científicos da rodada atual são registrados em
+[`docs/C1_SAMPLING_RESULTS.md`](C1_SAMPLING_RESULTS.md).
