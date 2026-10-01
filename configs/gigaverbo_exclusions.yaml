@@ -1,0 +1,92 @@
+# GigaVerbo-v2 Subsets Exclusion Policy for Cambacica
+# Project: cambacica-base-180m
+# Gate: C1 (CORPUS)
+#
+# Scientific note:
+# This exclusion list filters subsets identifiable via the 'subset' metadata column
+# in Polygl0t/gigaverbo-v2. It deliberately removes:
+# 1. Deliberately machine-translated datasets (violating CORPUS.md Section 2.2);
+# 2. Datasets with non-commercial (NC) license terms;
+# 3. Primary sources already acquired independently (preventing artificial near-duplicate redundancy).
+#
+# IMPORTANT LIMITATION:
+# This metadata filter CANNOT remove unmarked machine translation that entered broad web
+# crawls (e.g. Common Crawl, FineWeb-2, mc4). Such latent translation remains an unknown.
+
+version: "1.0.0"
+dataset: "Polygl0t/gigaverbo-v2"
+target_split: "edu_high"
+
+exclusions:
+  # 1. Explicitly machine-translated datasets
+  machine_translated:
+    - name: "dolly_15k_libretranslate_pt"
+      match_patterns: ["*dolly*libretranslate*", "*dolly-15k-libretranslate-pt*"]
+      reason: "Explicitly machine-translated using LibreTranslate (CORPUS.md Sec 2.2)."
+    - name: "bactrian_x"
+      match_patterns: ["*bactrian*", "*Bactrian-X*"]
+      reason: "Multilingual machine-translated instruction dataset."
+    - name: "ultrachat_br"
+      match_patterns: ["*ultrachat*", "*UltrachatBR*"]
+      reason: "Machine-translated conversational dataset."
+    - name: "cosmos_qa_ptbr"
+      match_patterns: ["*cosmos_qa*", "*cosmos_qa_ptbr*"]
+      reason: "Machine-translated benchmark questions."
+    - name: "gpt4all_j_prompt_generations_pt"
+      match_patterns: ["*gpt4all*", "*gpt4all-j*"]
+      reason: "Machine-translated synthetic prompt generations."
+
+  # 2. Non-commercial license restrictions
+  non_commercial:
+    - name: "xlsum"
+      match_patterns: ["*xlsum*"]
+      reason: "Licensed under CC BY-NC-SA 4.0; non-commercial restriction."
+    - name: "bactrian_x_nc"
+      match_patterns: ["*bactrian*", "*Bactrian-X*"]
+      reason: "Licensed under CC BY-NC 4.0; non-commercial restriction."
+
+  # 3. Primary source overlaps (already sampled independently in Cambacica)
+  primary_source_overlaps:
+    - name: "corpus_carolina"
+      match_patterns: ["*carolina*", "*corpus-carolina*"]
+      reason: "Primary source acquired independently with full TEI metadata."
+    - name: "wikipedia_pt"
+      match_patterns: ["*wikipedia*", "*graelo/wikipedia*"]
+      reason: "Primary source acquired independently from official Wikimedia dumps."
+    - name: "bdtd"
+      match_patterns: ["*bdtd*", "*BDTD*"]
+      reason: "External thesis corpus; tracked independently in inventory."
+    - name: "baixe_livros"
+      match_patterns: ["*baixe*livros*", "*baixelivros*"]
+      reason: "Public domain books tracked independently via Gutenberg and Wikisource."
+
+# Exact string or lowercase normalized match list for rapid evaluation
+blocked_subsets:
+  - "gustrd/dolly-15k-libretranslate-pt"
+  - "dolly-15k-libretranslate-pt"
+  - "dolly_15k_libretranslate_pt"
+  - "mbzuai/bactrian-x"
+  - "bactrian-x"
+  - "bactrian_x"
+  - "bactrianx"
+  - "recogna-nlp/ultrachatbr"
+  - "ultrachatbr"
+  - "ultrachat_br"
+  - "ultrachat"
+  - "heloisy/cosmos_qa_ptbr"
+  - "cosmos_qa_ptbr"
+  - "cosmos_qa"
+  - "pablo-moreira/gpt4all-j-prompt-generations-pt"
+  - "gpt4all-j-prompt-generations-pt"
+  - "gpt4all"
+  - "csebuetnlp/xlsum"
+  - "xlsum"
+  - "carolina-c4ai/corpus-carolina"
+  - "corpus-carolina"
+  - "corpus_carolina"
+  - "graelo/wikipedia"
+  - "wikipedia"
+  - "bdtd"
+  - "baixe livros"
+  - "baixe_livros"
+  - "baixelivros"

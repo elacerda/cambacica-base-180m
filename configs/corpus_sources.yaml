@@ -1,0 +1,90 @@
+# Configuration for Gate C1 Candidate Pretraining Sources
+# Project: cambacica-base-180m
+
+sources:
+  carolina:
+    canonical_id: "carolina-c4ai/corpus-carolina"
+    revision: "v2.0.1"
+    pinned_commit_sha: "55e63a519393c70a48dcfa14a558499c6bb0583b"
+    url: "https://huggingface.co/datasets/carolina-c4ai/corpus-carolina"
+    language_default: "pt-BR"
+    variety_default: "pt-BR"
+    license_default: "Source-specific (see TEI header)"
+    population:
+      version: "v2.0.1"
+      commit_sha: "55e63a519393c70a48dcfa14a558499c6bb0583b"
+      total_documented: 2108999
+      taxonomies:
+        dat: 1074032
+        wik: 957501
+        jud: 38187
+        uni: 26409
+        soc: 8862
+        leg: 3982
+        pub: 26
+    modes:
+      representative:
+        default_size: 10000
+        description: "Representative sample across Carolina taxonomies reflecting upstream proportions."
+      diagnostic:
+        default_size: 10000
+        description: "Stratified sample deliberately exposing minority domains (wik, dat, jud, leg, uni, soc, pub)."
+        strata:
+          wik: 2000
+          dat: 2000
+          jud: 2000
+          leg: 2000
+          uni: 1500
+          soc: 500
+
+  wikipedia_pt:
+    canonical_id: "wikimedia/wikipedia"
+    revision: "20231101.pt"
+    url: "https://huggingface.co/datasets/wikimedia/wikipedia"
+    language_default: "pt"
+    variety_default: null
+    license_default: "CC BY-SA 3.0/4.0 & GFDL"
+    modes:
+      representative:
+        default_size: 10000
+        description: "Representative encyclopedic articles sampled deterministically."
+
+  parlamento_pt:
+    canonical_id: "PORTULAN/parlamento-pt"
+    revision: "main"
+    url: "https://huggingface.co/datasets/PORTULAN/parlamento-pt"
+    language_default: "pt-PT"
+    variety_default: "pt-PT"
+    license_default: "Open Government Data (Portuguese Parliament)"
+    modes:
+      representative:
+        default_size: 10000
+        description: "Representative parliamentary interventions in native European Portuguese."
+
+  gigaverbo_v2:
+    canonical_id: "Polygl0t/gigaverbo-v2"
+    revision: "2026-09-27"
+    url: "https://huggingface.co/datasets/Polygl0t/gigaverbo-v2"
+    config_name: "edu_high"
+    language_default: "pt"
+    variety_default: null
+    license_default: null
+    modes:
+      audit:
+        default_size: 25000
+        description: "Audit sample of edu_high without subset filtering, to inspect unfiltered upstream data."
+      candidate:
+        default_size: 25000
+        description: "Candidate residual educational pool, filtering out excluded subsets via gigaverbo_exclusions.yaml."
+
+  gutenberg_pt:
+    canonical_id: "project_gutenberg_pt"
+    revision: "catalog_snapshot"
+    url: "https://www.gutenberg.org/browse/languages/pt"
+    language_default: "pt"
+    variety_default: null
+    license_default: "Project Gutenberg License / US Public Domain (jurisdiction-dependent)"
+    modes:
+      representative:
+        default_size: 100
+        description: "Around 100 complete literary works with standard Gutenberg header/footer boilerplate stripped."

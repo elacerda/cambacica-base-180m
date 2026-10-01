@@ -36,7 +36,11 @@ Deve incluir:
 - estimativa de tokens;
 - conjunto de validação separado do treino.
 
-Status: **NEXT**
+Progresso atual:
+- Inventário de fontes concluído;
+- Pipeline de amostragem determinística e inspeção diagnóstica implementado (`docs/CORPUS_SAMPLING.md`).
+
+Status: **IN PROGRESS**
 
 ## C2 — Tokenizer
 
