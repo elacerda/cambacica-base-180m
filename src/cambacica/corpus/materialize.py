@@ -13,23 +13,82 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
+import subprocess
+import threading
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 import requests
 import yaml
 
-from cambacica.corpus.manifest import compute_file_sha256, get_git_commit
+from cambacica.corpus.manifest import compute_file_sha256
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path("configs/corpus_materialization.yaml")
+MATERIALIZER_REPO_ROOT = Path(__file__).resolve().parents[3]
 GUTENBERG_CATALOG_URL = "https://www.gutenberg.org/browse/languages/pt"
 GUTENBERG_URL_CANDIDATES = [
     "https://www.gutenberg.org/cache/epub/{id}/pg{id}.txt",
     "https://www.gutenberg.org/files/{id}/{id}-0.txt",
     "https://www.gutenberg.org/files/{id}/{id}.txt",
 ]
+
+
+def _atomic_write_json(data: dict, path: Path | str) -> Path:
+    """Write JSON through a same-directory temporary file and atomic replace."""
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = out_path.with_name(f"{out_path.name}.partial")
+    try:
+        with temporary_path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_path, out_path)
+    except Exception:
+        # A completed prior destination remains intact; the temporary file is
+        # deliberately retained for inspection/recovery after a failed write.
+        raise
+    return out_path
+
+
+def _get_clean_tool_git_commit() -> str:
+    """Return HEAD only when the materializer repository is clean."""
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=MATERIALIZER_REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=MATERIALIZER_REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not establish materializer Git provenance: {exc}"
+        ) from exc
+
+    if head.returncode != 0 or status.returncode != 0 or not head.stdout.strip():
+        raise RuntimeError("Could not establish materializer Git provenance.")
+    if status.stdout.strip():
+        raise RuntimeError(
+            "Refusing production materialization from a dirty working tree; "
+            "commit or discard all tracked and untracked changes first."
+        )
+    return head.stdout.strip()
 
 
 def load_yaml_config(config_path: Path | str) -> dict:
@@ -119,7 +178,7 @@ class MaterializationManifest:
     total_bytes : int, default 0
         Total byte size of all materialized payload files recorded.
     tool_git_commit : str or None, optional
-        Git commit hash of the cambacica codebase at time of materialization.
+        Clean Git commit hash of the cambacica codebase at materialization time.
     checksum_provenance : str, default 'local_payload_sha256'
         Explanation of checksum origin.
     ebook_ids : list of int or None, optional
@@ -184,11 +243,7 @@ class MaterializationManifest:
         Path
             Resolved destination file path.
         """
-        out_path = Path(path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        with out_path.open("w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
-        return out_path
+        return _atomic_write_json(self.to_dict(), path)
 
     @classmethod
     def load(cls, path: Path | str) -> MaterializationManifest:
@@ -210,13 +265,97 @@ class MaterializationManifest:
             If manifest file does not exist.
         """
         in_path = Path(path)
-        with in_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with in_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"Could not read valid JSON manifest {in_path}: {exc}"
+            ) from exc
+        if not isinstance(data, dict):
+            raise ValueError(f"Manifest {in_path} must contain a JSON object.")
+        if not isinstance(data.get("files", []), list):
+            raise ValueError(f"Manifest {in_path} field 'files' must be a list.")
+        if not isinstance(data.get("failed_ids", []), list):
+            raise ValueError(f"Manifest {in_path} field 'failed_ids' must be a list.")
+        if not isinstance(data.get("failure_reasons", {}), dict):
+            raise ValueError(
+                f"Manifest {in_path} field 'failure_reasons' must be an object."
+            )
+        if data.get("ebook_ids") is not None and not isinstance(
+            data["ebook_ids"], list
+        ):
+            raise ValueError(f"Manifest {in_path} field 'ebook_ids' must be a list.")
+        if data.get("ebook_ids") is not None and any(
+            isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            for value in data["ebook_ids"]
+        ):
+            raise ValueError(
+                f"Manifest {in_path} field 'ebook_ids' must contain positive integers."
+            )
+        for index, record in enumerate(data.get("files", [])):
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"Manifest {in_path} file record {index} must be an object."
+                )
+            required_record_fields = {
+                "relative_path",
+                "upstream_identifier",
+                "url",
+                "bytes",
+                "sha256",
+            }
+            if not required_record_fields.issubset(record):
+                raise ValueError(
+                    f"Manifest {in_path} file record {index} is missing required fields."
+                )
+            if not isinstance(record["relative_path"], str) or not isinstance(
+                record["url"], str
+            ):
+                raise ValueError(
+                    f"Manifest {in_path} file record {index} has invalid path or URL."
+                )
+            if not record["url"]:
+                raise ValueError(
+                    f"Manifest {in_path} file record {index} has an empty URL."
+                )
+            if (
+                not isinstance(record["bytes"], int)
+                or isinstance(record["bytes"], bool)
+                or record["bytes"] < 0
+            ):
+                raise ValueError(
+                    f"Manifest {in_path} file record {index} has invalid byte count."
+                )
+            digest = record["sha256"]
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(char not in "0123456789abcdefABCDEF" for char in digest)
+            ):
+                raise ValueError(
+                    f"Manifest {in_path} file record {index} has invalid SHA-256."
+                )
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
-        return cls(**filtered_data)
+        try:
+            manifest = cls(**filtered_data)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Manifest {in_path} has invalid fields: {exc}") from exc
+        if manifest.status not in {"COMPLETE", "PARTIAL", "FAILED"}:
+            raise ValueError(
+                f"Manifest {in_path} has unsupported status {manifest.status!r}."
+            )
+        return manifest
 
-    def verify(self, destination: Path | str) -> Tuple[bool, List[str]]:
+    def verify(
+        self,
+        destination: Path | str,
+        *,
+        check_partial_files: bool = True,
+        check_runtime_state: bool = True,
+        check_ids_metadata: bool = True,
+    ) -> Tuple[bool, List[str]]:
         """Verify all recorded files against files present on disk.
 
         Parameters
@@ -237,11 +376,16 @@ class MaterializationManifest:
             errors.append(f"Destination directory does not exist: {root}")
             return False, errors
 
-        # Verify no orphan .partial files remain
-        partial_files = list(root.glob("*.partial*"))
-        if partial_files:
-            for pf in partial_files:
+        # Verify no unfinished payload or metadata writes remain.
+        if check_partial_files:
+            partial_files = list(root.glob("*.partial*"))
+            partial_files.extend(root.glob(".*.partial*"))
+            for pf in sorted(set(partial_files)):
                 errors.append(f"Orphaned partial file detected: {pf.name}")
+        if check_runtime_state and (root / "manifest.in_progress.json").exists():
+            errors.append(
+                "An interrupted or unfinished manifest.in_progress.json exists."
+            )
 
         # Check manifest status
         if self.status != "COMPLETE":
@@ -262,6 +406,36 @@ class MaterializationManifest:
                 f"Manifest records {len(self.failed_ids)} failed IDs: {self.failed_ids}"
             )
 
+        if self.source == "gutenberg_pt" and self.ebook_ids is not None:
+            if len(self.ebook_ids) != len(set(self.ebook_ids)):
+                errors.append("Manifest ebook_ids contains duplicate identifiers.")
+            if self.ebook_ids != sorted(self.ebook_ids):
+                errors.append("Manifest ebook_ids is not sorted deterministically.")
+            try:
+                expected_ids = {str(int(value)) for value in self.ebook_ids}
+                record_ids = {
+                    str(int(record.get("upstream_identifier"))) for record in self.files
+                }
+            except (TypeError, ValueError):
+                errors.append("Manifest contains a non-numeric Gutenberg eBook ID.")
+            else:
+                if record_ids != expected_ids:
+                    errors.append(
+                        "Manifest file identifiers do not match the frozen ebook_ids."
+                    )
+                for record in self.files:
+                    try:
+                        item_id = int(record.get("upstream_identifier"))
+                    except (TypeError, ValueError):
+                        continue
+                    if record.get("relative_path") != f"pg{item_id}.txt":
+                        errors.append(
+                            f"File path does not match Gutenberg ID {item_id}: "
+                            f"{record.get('relative_path')}"
+                        )
+        elif self.source == "gutenberg_pt" and self.status == "COMPLETE":
+            errors.append("COMPLETE Gutenberg manifest is missing frozen ebook_ids.")
+
         # Verify files list integrity
         computed_total_bytes = 0
         seen_paths: Set[str] = set()
@@ -279,7 +453,10 @@ class MaterializationManifest:
                 errors.append(f"Duplicate file entry in manifest: {rel_path}")
             seen_paths.add(rel_path)
 
-            file_path = root / rel_path
+            file_path = (root / rel_path).resolve()
+            if root.resolve() not in file_path.parents:
+                errors.append(f"File record escapes the destination: {rel_path}")
+                continue
             if not file_path.is_file():
                 errors.append(f"Missing file on disk: {rel_path}")
                 continue
@@ -299,6 +476,25 @@ class MaterializationManifest:
                 )
 
             computed_total_bytes += actual_bytes
+
+        ids_metadata_path = root / "ebook_ids.json"
+        if (
+            check_ids_metadata
+            and ids_metadata_path.is_file()
+            and self.ebook_ids is not None
+        ):
+            try:
+                with ids_metadata_path.open("r", encoding="utf-8") as f:
+                    ids_metadata = json.load(f)
+                metadata_ids = (
+                    ids_metadata.get("ebook_ids")
+                    if isinstance(ids_metadata, dict)
+                    else None
+                )
+                if metadata_ids != self.ebook_ids:
+                    errors.append("ebook_ids.json does not match manifest ebook_ids.")
+            except (OSError, json.JSONDecodeError):
+                errors.append("ebook_ids.json is malformed or unreadable.")
 
         if self.total_files != len(self.files):
             errors.append(
@@ -430,7 +626,10 @@ class BaseMaterializer:
         manifest_file = self.destination / "manifest.json"
         if not manifest_file.is_file():
             return False, [f"Manifest not found: {manifest_file}"]
-        manifest = MaterializationManifest.load(manifest_file)
+        try:
+            manifest = MaterializationManifest.load(manifest_file)
+        except ValueError as exc:
+            return False, [str(exc)]
         return manifest.verify(self.destination)
 
 
@@ -493,9 +692,10 @@ class GutenbergMaterializer(BaseMaterializer):
             "existing_text_files": len(existing_files),
             "has_manifest": existing_manifest.is_file(),
             "safety_mechanisms": {
-                "atomic_writes": "Downloads to *.partial and renames on payload completion",
-                "idempotent_resume": "Skips redownloading verified payload files",
+                "atomic_writes": "Payload and JSON metadata are replaced atomically after complete writes",
+                "idempotent_resume": "Reuses only payloads matching trusted prior manifest records",
                 "checksum_hashing": "Locally computes SHA-256 for each payload",
+                "tool_provenance": "Requires a clean Git working tree and records HEAD",
                 "raw_preservation": "Plain-text unaltered; no boilerplate stripping or normalization",
             },
         }
@@ -503,8 +703,8 @@ class GutenbergMaterializer(BaseMaterializer):
     def resolve_ebook_ids(self, verify_live: bool = True) -> List[int]:
         """Resolve the deterministic list of 655 eBook IDs.
 
-        Compares live catalog results against frozen snapshot configuration or
-        sampling metadata to detect any provenance mismatch.
+        Loads the checked-in snapshot as the only accepted ID source. When
+        requested, the live catalog is checked for exact consistency.
 
         Parameters
         ----------
@@ -522,69 +722,111 @@ class GutenbergMaterializer(BaseMaterializer):
         RuntimeError
             If live catalog count or content does not match the accepted snapshot.
         """
-        snapshot_ids: Optional[List[int]] = None
-
-        # 1. Load from snapshot config if specified
-        if self.snapshot_config_path:
-            p = Path(self.snapshot_config_path)
-            if p.is_file():
-                try:
-                    with p.open("r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    snapshot_ids = sorted(
-                        list(set(int(x) for x in data.get("ebook_ids", [])))
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not load snapshot config {p}: {e}")
-
-        # 2. Reconstruct from sampling metadata if not found in snapshot config
-        if not snapshot_ids:
-            sampling_manifest_path = Path(
-                "/mnt/data/cambacica-base-180m/samples/gate_c1/gutenberg_pt/manifest_representative.json"
+        if not self.snapshot_config_path:
+            raise RuntimeError("No frozen Gutenberg snapshot is configured.")
+        snapshot_path = Path(self.snapshot_config_path)
+        if not snapshot_path.is_absolute():
+            snapshot_path = MATERIALIZER_REPO_ROOT / snapshot_path
+        snapshot_path = snapshot_path.resolve()
+        try:
+            snapshot_relative_path = snapshot_path.relative_to(
+                MATERIALIZER_REPO_ROOT.resolve()
             )
-            if sampling_manifest_path.is_file():
-                try:
-                    with sampling_manifest_path.open("r", encoding="utf-8") as f:
-                        sm = json.load(f)
-                    if sm.get("stats", {}).get("selected_ebook_ids"):
-                        logger.info("Found existing sampling metadata from Gate C1.")
-                except Exception:
-                    pass
+        except ValueError as exc:
+            raise RuntimeError(
+                "The authoritative Gutenberg snapshot must be a checked-in file "
+                "inside this repository."
+            ) from exc
+        tracked_snapshot = subprocess.run(
+            [
+                "git",
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                snapshot_relative_path.as_posix(),
+            ],
+            cwd=MATERIALIZER_REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if tracked_snapshot.returncode != 0:
+            raise RuntimeError(
+                f"Gutenberg snapshot {snapshot_relative_path} is not tracked by Git."
+            )
+        try:
+            with snapshot_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            raw_ids = data["ebook_ids"]
+            if not isinstance(raw_ids, list):
+                raise ValueError("ebook_ids must be a JSON list")
+            if data.get("schema_version") != 1:
+                raise ValueError("unsupported snapshot schema version")
+            if data.get("source") not in {None, self.source_name}:
+                raise ValueError("snapshot source does not match gutenberg_pt")
+            if data.get("snapshot_date") != self.snapshot_date:
+                raise ValueError(
+                    f"snapshot_date {data.get('snapshot_date')!r} does not match "
+                    f"configured date {self.snapshot_date!r}"
+                )
+            if data.get("catalog_query") != self.catalog_query:
+                raise ValueError("catalog_query does not match the configured query")
+            if data.get("catalog_size_ebooks") != self.expected_size:
+                raise ValueError(
+                    "catalog_size_ebooks does not match the configured expected size"
+                )
+            if any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in raw_ids
+            ):
+                raise ValueError("ebook_ids must contain JSON integers")
+            snapshot_ids = list(raw_ids)
+            if any(value <= 0 for value in snapshot_ids):
+                raise ValueError("ebook_ids must contain positive integer IDs")
+            if len(snapshot_ids) != len(set(snapshot_ids)):
+                raise ValueError("ebook_ids contains duplicate IDs")
+            snapshot_ids = sorted(snapshot_ids)
+            if len(snapshot_ids) != self.expected_size:
+                raise ValueError(
+                    f"Frozen snapshot contains {len(snapshot_ids)} IDs; "
+                    f"expected {self.expected_size}"
+                )
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Could not load authoritative Gutenberg snapshot {snapshot_path}: {exc}"
+            ) from exc
 
-        # 3. Live catalog validation
+        # The live catalog can only confirm the checked-in snapshot; it never
+        # supplies IDs or changes the accepted set.
         if verify_live:
             try:
                 from cambacica.corpus.sources.gutenberg_pt import (
                     discover_gutenberg_pt_ids,
                 )
 
-                live_ids = discover_gutenberg_pt_ids(timeout=20)
+                live_ids = sorted(
+                    {int(value) for value in discover_gutenberg_pt_ids(timeout=20)}
+                )
                 if len(live_ids) != self.expected_size:
                     raise RuntimeError(
                         f"Provenance mismatch: Live Gutenberg catalog returned {len(live_ids)} "
                         f"eBooks, expected exactly {self.expected_size}."
                     )
-                if snapshot_ids and live_ids != snapshot_ids:
+                if live_ids != snapshot_ids:
                     raise RuntimeError(
                         "Provenance mismatch: Live Gutenberg catalog IDs differ from "
                         "the accepted 2026-10-01 snapshot."
                     )
-                return live_ids
             except Exception as err:
                 if isinstance(err, RuntimeError) and "Provenance mismatch" in str(err):
                     raise
                 logger.warning(
                     f"Live Gutenberg catalog discovery failed ({err}); "
-                    "falling back to accepted frozen snapshot."
+                    "continuing with the authoritative frozen snapshot."
                 )
-
-        if snapshot_ids and len(snapshot_ids) == self.expected_size:
-            return snapshot_ids
-
-        raise RuntimeError(
-            "Unable to resolve accepted 655 Gutenberg eBook IDs: "
-            "neither live catalog nor accepted snapshot config was accessible."
-        )
+        return snapshot_ids
 
     def _download_single(
         self,
@@ -592,6 +834,7 @@ class GutenbergMaterializer(BaseMaterializer):
         session: requests.Session,
         timeout: int,
         max_retries: int,
+        trusted_record: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, int, str, str, int, Optional[str], Optional[str], int, bool]:
         """Download or verify a single eBook payload.
 
@@ -616,53 +859,92 @@ class GutenbergMaterializer(BaseMaterializer):
         final_path = self.destination / filename
         partial_path = self.destination / f"{filename}.partial"
 
-        # Check existing file on disk (idempotency check)
-        if final_path.is_file():
+        # A final payload is reusable only when a prior manifest supplies its
+        # trusted size, digest, and original successful URL.
+        if final_path.is_file() and trusted_record is not None:
             size = final_path.stat().st_size
-            if size > 0:
-                sha = compute_file_sha256(final_path)
-                primary_url = GUTENBERG_URL_CANDIDATES[0].format(id=ebook_id)
-                return True, ebook_id, filename, primary_url, size, sha, None, 0, True
+            sha = compute_file_sha256(final_path)
+            expected_size = int(trusted_record["bytes"])
+            expected_sha = str(trusted_record["sha256"]).lower()
+            if size != expected_size or sha.lower() != expected_sha:
+                raise RuntimeError(
+                    f"Existing payload {filename} does not match its trusted manifest "
+                    f"record (expected {expected_size} bytes / {expected_sha}, "
+                    f"found {size} bytes / {sha}). Refusing to bless local changes."
+                )
+            return (
+                True,
+                ebook_id,
+                filename,
+                str(trusted_record["url"]),
+                size,
+                sha,
+                None,
+                0,
+                True,
+            )
 
         candidate_urls = [c.format(id=ebook_id) for c in GUTENBERG_URL_CANDIDATES]
+        if trusted_record is not None and trusted_record.get("url"):
+            previous_url = str(trusted_record["url"])
+            candidate_urls = [previous_url] + [
+                candidate for candidate in candidate_urls if candidate != previous_url
+            ]
         retries_used = 0
         last_error = None
 
         for attempt in range(max_retries):
             for url in candidate_urls:
+                resp = None
                 try:
                     resp = session.get(url, timeout=timeout, stream=True)
-                    if resp.status_code == 200:
-                        hasher = hashlib.sha256()
-                        bytes_count = 0
-                        with open(partial_path, "wb") as f:
-                            for chunk in resp.iter_content(chunk_size=65536):
-                                if chunk:
-                                    f.write(chunk)
-                                    hasher.update(chunk)
-                                    bytes_count += len(chunk)
+                    if resp.status_code != 200:
+                        last_error = f"HTTP {resp.status_code} for {url}"
+                        resp.close()
+                        continue
 
-                        if bytes_count == 0:
-                            if partial_path.exists():
-                                partial_path.unlink()
-                            continue
+                    hasher = hashlib.sha256()
+                    bytes_count = 0
+                    with open(partial_path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=65536):
+                            if chunk:
+                                f.write(chunk)
+                                hasher.update(chunk)
+                                bytes_count += len(chunk)
+                        f.flush()
+                        os.fsync(f.fileno())
 
-                        # Atomic rename on complete payload write
-                        partial_path.replace(final_path)
-                        sha = hasher.hexdigest()
-                        return (
-                            True,
-                            ebook_id,
-                            filename,
-                            url,
-                            bytes_count,
-                            sha,
-                            None,
-                            retries_used,
-                            False,
-                        )
+                    if bytes_count == 0:
+                        if partial_path.exists():
+                            partial_path.unlink()
+                        resp.close()
+                        continue
+
+                    successful_url = getattr(resp, "url", None)
+                    if not isinstance(successful_url, str) or not successful_url:
+                        successful_url = url
+                    resp.close()
+                    # Atomic rename on complete, flushed payload write.
+                    os.replace(partial_path, final_path)
+                    sha = hasher.hexdigest()
+                    return (
+                        True,
+                        ebook_id,
+                        filename,
+                        successful_url,
+                        bytes_count,
+                        sha,
+                        None,
+                        retries_used,
+                        False,
+                    )
                 except Exception as e:
                     last_error = str(e)
+                    if resp is not None:
+                        try:
+                            resp.close()
+                        except Exception:
+                            pass
                     if partial_path.exists():
                         try:
                             partial_path.unlink()
@@ -715,33 +997,138 @@ class GutenbergMaterializer(BaseMaterializer):
         MaterializationManifest
             Populated and saved source manifest.
         """
+        tool_git_commit = _get_clean_tool_git_commit()
+        frozen_ids = self.resolve_ebook_ids(verify_live=verify_live)
+        if ebook_ids is None:
+            resolved_ids = frozen_ids
+        else:
+            requested_ids = [int(value) for value in ebook_ids]
+            if len(requested_ids) != len(set(requested_ids)):
+                raise ValueError("ebook_ids override contains duplicate IDs")
+            if any(value <= 0 for value in requested_ids):
+                raise ValueError("ebook_ids override must contain positive IDs")
+            resolved_ids = sorted(requested_ids)
+            if not self.allow_custom_destination and resolved_ids != frozen_ids:
+                raise ValueError(
+                    "Production materialization must use the authoritative frozen "
+                    "Gutenberg snapshot ID set."
+                )
+        if not resolved_ids:
+            raise ValueError("At least one Gutenberg eBook ID is required.")
+
         self.destination.mkdir(parents=True, exist_ok=True)
+        manifest_path = self.destination / "manifest.json"
+        in_progress_path = self.destination / "manifest.in_progress.json"
+        ebook_ids_path = self.destination / "ebook_ids.json"
         started_at = datetime.now(timezone.utc).isoformat()
 
-        if ebook_ids is None:
-            resolved_ids = self.resolve_ebook_ids(verify_live=verify_live)
-        else:
-            resolved_ids = sorted(list(set(int(x) for x in ebook_ids)))
+        def load_existing(path: Path, label: str) -> Optional[MaterializationManifest]:
+            if not path.exists():
+                return None
+            try:
+                return MaterializationManifest.load(path)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Cannot safely recover from invalid {label} {path}: {exc}"
+                ) from exc
 
-        manifest_path = self.destination / "manifest.json"
-        ebook_ids_path = self.destination / "ebook_ids.json"
+        trusted_records: Dict[int, Dict[str, Any]] = {}
 
-        # Adjacent metadata file with deterministic ID list
-        with ebook_ids_path.open("w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "schema_version": 1,
-                    "source": self.source_name,
-                    "snapshot_date": self.snapshot_date,
-                    "catalog_query": self.catalog_query,
-                    "catalog_size_ebooks": len(resolved_ids),
-                    "ebook_ids": resolved_ids,
-                },
-                f,
-                indent=2,
+        def add_trusted_records(prior: MaterializationManifest) -> None:
+            if prior.source != self.source_name:
+                raise RuntimeError(
+                    f"Existing manifest source {prior.source!r} does not match "
+                    f"{self.source_name!r}."
+                )
+            if (
+                prior.ebook_ids != resolved_ids
+                or prior.snapshot_date != self.snapshot_date
+                or prior.pinned_revision
+                != self.source_config.get("pinned_revision", "snapshot_2026-10-01")
+                or prior.catalog_query != self.catalog_query
+            ):
+                return
+            for record in prior.files:
+                try:
+                    item_id = int(record["upstream_identifier"])
+                    relative_path = str(record["relative_path"])
+                    expected_size = int(record["bytes"])
+                    expected_sha = str(record["sha256"]).lower()
+                    url = str(record["url"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise RuntimeError(
+                        f"Existing manifest contains an invalid file record: {record!r}"
+                    ) from exc
+                if not url or url == "None":
+                    raise RuntimeError(
+                        f"Existing manifest has no successful URL for {record!r}."
+                    )
+                if item_id not in resolved_ids:
+                    continue
+                expected_path = f"pg{item_id}.txt"
+                if relative_path != expected_path:
+                    raise RuntimeError(
+                        f"Existing manifest maps Gutenberg ID {item_id} to unexpected "
+                        f"path {relative_path!r}."
+                    )
+                if item_id in trusted_records:
+                    existing = trusted_records[item_id]
+                    if (
+                        int(existing["bytes"]) != expected_size
+                        or str(existing["sha256"]).lower() != expected_sha
+                    ):
+                        raise RuntimeError(
+                            f"Existing manifests disagree about trusted payload {relative_path}."
+                        )
+                    continue
+                file_path = self.destination / relative_path
+                if file_path.exists():
+                    actual_size = file_path.stat().st_size
+                    actual_sha = compute_file_sha256(file_path).lower()
+                    if actual_size != expected_size or actual_sha != expected_sha:
+                        raise RuntimeError(
+                            f"Existing payload {relative_path} does not match its trusted "
+                            "manifest record. Refusing to bless local changes."
+                        )
+                trusted_records[item_id] = dict(record, url=url)
+
+        previous_manifest = load_existing(manifest_path, "canonical manifest")
+        if previous_manifest is not None and previous_manifest.status == "COMPLETE":
+            valid, errors = previous_manifest.verify(
+                self.destination,
+                check_partial_files=False,
+                check_runtime_state=False,
+                check_ids_metadata=False,
             )
+            if not valid:
+                raise RuntimeError(
+                    "Existing COMPLETE manifest failed integrity verification; "
+                    "refusing to overwrite it: " + "; ".join(errors[:5])
+                )
+            add_trusted_records(previous_manifest)
 
-        # Initialize in-progress manifest (status = PARTIAL)
+        in_progress_manifest = load_existing(in_progress_path, "in-progress manifest")
+        if (
+            in_progress_manifest is not None
+            and in_progress_manifest.status in {"PARTIAL", "FAILED"}
+            and in_progress_manifest.tool_git_commit == tool_git_commit
+            and in_progress_manifest.ebook_ids == resolved_ids
+        ):
+            add_trusted_records(in_progress_manifest)
+
+        completed_records: Dict[str, MaterializedFileRecord] = {
+            f"pg{item_id}.txt": MaterializedFileRecord(
+                relative_path=f"pg{item_id}.txt",
+                upstream_identifier=str(item_id),
+                url=str(record["url"]),
+                bytes=int(record["bytes"]),
+                sha256=str(record["sha256"]),
+                checksum_source=str(record.get("checksum_source", "local_sha256")),
+            )
+            for item_id, record in trusted_records.items()
+            if (self.destination / f"pg{item_id}.txt").is_file()
+        }
+
         manifest = MaterializationManifest(
             schema_version=1,
             source=self.source_name,
@@ -755,102 +1142,166 @@ class GutenbergMaterializer(BaseMaterializer):
             snapshot_date=self.snapshot_date,
             acquisition_started_at=started_at,
             status="PARTIAL",
-            tool_git_commit=get_git_commit(),
+            tool_git_commit=tool_git_commit,
             checksum_provenance="local_payload_sha256",
             ebook_ids=resolved_ids,
             catalog_snapshot_date=self.snapshot_date,
             catalog_query=self.catalog_query,
             catalog_size_ebooks=len(resolved_ids),
         )
-        manifest.save(manifest_path)
 
-        completed_records: Dict[str, MaterializedFileRecord] = {}
+        def checkpoint(status: str = "PARTIAL") -> None:
+            files = [
+                completed_records[key].to_dict() for key in sorted(completed_records)
+            ]
+            manifest.status = status
+            manifest.files = files
+            manifest.total_files = len(files)
+            manifest.total_bytes = sum(record["bytes"] for record in files)
+            manifest.save(in_progress_path)
+
+        checkpoint()
         failed_ids: List[int] = []
         failure_reasons: Dict[str, str] = {}
         total_retries = 0
         newly_downloaded_bytes = 0
         cached_count = 0
+        successful_since_checkpoint = 0
+        concurrency = max(1, concurrency)
+        worker_state = threading.local()
+        session_lock = threading.Lock()
+        worker_sessions: List[requests.Session] = []
 
-        # Execute downloads safely using ThreadPoolExecutor
-        with requests.Session() as session:
-            session.headers.update(
-                {
-                    "User-Agent": "cambacica-corpus-materialization/0.1.0 (reproducible research pretraining)"
-                }
+        def worker_session() -> requests.Session:
+            session = getattr(worker_state, "session", None)
+            if session is None:
+                session = requests.Session()
+                session.headers.update(
+                    {
+                        "User-Agent": "cambacica-corpus-materialization/0.1.0 "
+                        "(reproducible research pretraining)"
+                    }
+                )
+                worker_state.session = session
+                with session_lock:
+                    worker_sessions.append(session)
+            return session
+
+        # Incomplete temp files are never trusted. The last atomically written
+        # runtime checkpoint, if present, was loaded above.
+        for stale_path in self.destination.glob("*.txt.partial"):
+            stale_path.unlink(missing_ok=True)
+        (self.destination / "manifest.in_progress.json.partial").unlink(missing_ok=True)
+
+        def download_item(item_id: int):
+            return self._download_single(
+                item_id,
+                worker_session(),
+                timeout,
+                max_retries,
+                trusted_records.get(item_id),
             )
-            concurrency = max(1, concurrency)
+
+        try:
             with ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futures = {
-                    executor.submit(
-                        self._download_single,
-                        bid,
-                        session,
-                        timeout,
-                        max_retries,
-                    ): bid
-                    for bid in resolved_ids
+                    executor.submit(download_item, item_id): item_id
+                    for item_id in resolved_ids
                 }
-
                 for future in as_completed(futures):
-                    bid = futures[future]
+                    item_id = futures[future]
                     try:
                         (
                             success,
-                            item_id,
-                            rel_path,
+                            result_id,
+                            relative_path,
                             url,
                             byte_count,
                             sha,
-                            err,
+                            error,
                             retries,
                             cached,
                         ) = future.result()
                         total_retries += retries
-
                         if success and sha is not None:
-                            record = MaterializedFileRecord(
-                                relative_path=rel_path,
-                                upstream_identifier=str(item_id),
+                            completed_records[relative_path] = MaterializedFileRecord(
+                                relative_path=relative_path,
+                                upstream_identifier=str(result_id),
                                 url=url,
                                 bytes=byte_count,
                                 sha256=sha,
                                 checksum_source="local_sha256",
                             )
-                            completed_records[rel_path] = record
                             if cached:
                                 cached_count += 1
                             else:
                                 newly_downloaded_bytes += byte_count
+                            successful_since_checkpoint += 1
+                            if successful_since_checkpoint >= 25:
+                                checkpoint()
+                                successful_since_checkpoint = 0
                         else:
-                            failed_ids.append(item_id)
-                            failure_reasons[str(item_id)] = (
-                                err or "Unknown download error"
-                            )
-                    except Exception as ex:
-                        failed_ids.append(bid)
-                        failure_reasons[str(bid)] = str(ex)
+                            failed_ids.append(result_id)
+                            failure_reasons[str(result_id)] = error or "Unknown error"
+                    except Exception as exc:
+                        failed_ids.append(item_id)
+                        failure_reasons[str(item_id)] = str(exc)
+        finally:
+            for session in worker_sessions:
+                session.close()
 
-        # Sort files deterministically by relative_path
         sorted_files = [
-            completed_records[k].to_dict() for k in sorted(completed_records.keys())
+            completed_records[key].to_dict() for key in sorted(completed_records)
         ]
-        total_bytes = sum(f["bytes"] for f in sorted_files)
-
-        is_complete = len(sorted_files) == len(resolved_ids) and len(failed_ids) == 0
+        record_ids = {int(record["upstream_identifier"]) for record in sorted_files}
+        expected_ids = set(resolved_ids)
+        is_complete = (
+            record_ids == expected_ids
+            and len(sorted_files) == len(expected_ids)
+            and not failed_ids
+        )
 
         manifest.acquisition_completed_at = datetime.now(timezone.utc).isoformat()
         manifest.status = "COMPLETE" if is_complete else "FAILED"
         manifest.files = sorted_files
         manifest.total_files = len(sorted_files)
-        manifest.total_bytes = total_bytes
+        manifest.total_bytes = sum(record["bytes"] for record in sorted_files)
         manifest.failed_ids = sorted(failed_ids)
         manifest.failure_reasons = failure_reasons
-        manifest.save(manifest_path)
+
+        if is_complete:
+            valid, errors = manifest.verify(
+                self.destination,
+                check_partial_files=False,
+                check_runtime_state=False,
+                check_ids_metadata=False,
+            )
+            if not valid:
+                raise RuntimeError(
+                    "Refusing to publish COMPLETE manifest because payload verification "
+                    "failed: " + "; ".join(errors[:5])
+                )
+            manifest.save(manifest_path)
+            _atomic_write_json(
+                {
+                    "schema_version": 1,
+                    "source": self.source_name,
+                    "snapshot_date": self.snapshot_date,
+                    "catalog_query": self.catalog_query,
+                    "catalog_size_ebooks": len(resolved_ids),
+                    "ebook_ids": resolved_ids,
+                },
+                ebook_ids_path,
+            )
+            in_progress_path.unlink(missing_ok=True)
+        else:
+            checkpoint(status="FAILED")
 
         logger.info(
             f"Materialization finished: {manifest.status}. "
             f"Files: {manifest.total_files}/{len(resolved_ids)}, "
-            f"Bytes: {manifest.total_bytes:,}, Cached: {cached_count}, Retries: {total_retries}"
+            f"Bytes: {manifest.total_bytes:,}, Cached: {cached_count}, "
+            f"Downloaded: {newly_downloaded_bytes:,}, Retries: {total_retries}"
         )
         return manifest
 
