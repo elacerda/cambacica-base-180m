@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Training outputs
+checkpoints/
+runs/
+logs/
+wandb/
+tensorboard/
+outputs/
+
+# Large datasets / generated corpora
+data/
+datasets/
+corpus/
+*.jsonl
+*.jsonl.gz
+*.parquet
+*.arrow
+*.bin
+*.idx
+
+# Model artifacts
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# Temporary files
+tmp/
+.cache/
