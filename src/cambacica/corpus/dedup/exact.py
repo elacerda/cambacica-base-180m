@@ -164,7 +164,6 @@ def find_cross_source_exact_duplicates(
             ids = table["original_id"].to_pylist()
             hashes = table["content_sha256"].to_pylist()
 
-            first_source = raw_sources[0] if raw_sources else None
             mode = _mode_from_path(path)
 
             for idx, (src, orig_id, sha) in enumerate(zip(raw_sources, ids, hashes)):
@@ -233,24 +232,30 @@ def find_cross_source_exact_duplicates(
                         cross_src_pairs[pair_key] += 1
 
         if len(example_collisions) < max_example_collisions:
-            example_collisions.append({
-                "content_sha256": sha,
-                "count": len(occurrences),
-                "relationship": (
-                    "within_file" if len(unique_files) == 1
-                    else ("same_source_cross_mode" if len(unique_sources) == 1
-                          else "cross_source")
-                ),
-                "occurrences": [
-                    {
-                        "source": o.source,
-                        "file": Path(o.file_path).name,
-                        "mode": o.mode,
-                        "original_id": o.original_id,
-                    }
-                    for o in occurrences
-                ],
-            })
+            example_collisions.append(
+                {
+                    "content_sha256": sha,
+                    "count": len(occurrences),
+                    "relationship": (
+                        "within_file"
+                        if len(unique_files) == 1
+                        else (
+                            "same_source_cross_mode"
+                            if len(unique_sources) == 1
+                            else "cross_source"
+                        )
+                    ),
+                    "occurrences": [
+                        {
+                            "source": o.source,
+                            "file": Path(o.file_path).name,
+                            "mode": o.mode,
+                            "original_id": o.original_id,
+                        }
+                        for o in occurrences
+                    ],
+                }
+            )
 
     return CrossSourceDuplicateReport(
         total_unique_hashes=total_unique,

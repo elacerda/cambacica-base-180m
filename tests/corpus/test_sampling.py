@@ -1,7 +1,6 @@
 """Unit tests for deterministic sampling algorithms."""
 
 import random
-import pytest
 
 from cambacica.corpus.sampling import (
     DeterministicReservoirSampler,
@@ -145,15 +144,9 @@ def test_proportional_allocation_dominant_categories():
     assert allocation["dat"] > allocation["wik"], (
         "dat allocation must exceed wik (dat is largest in Carolina v2.0.1)"
     )
-    assert allocation["wik"] > allocation["jud"], (
-        "wik allocation must exceed jud"
-    )
-    assert allocation["dat"] > allocation["jud"], (
-        "dat allocation must exceed jud"
-    )
-    assert allocation["wik"] > allocation["leg"], (
-        "wik allocation must exceed leg"
-    )
+    assert allocation["wik"] > allocation["jud"], "wik allocation must exceed jud"
+    assert allocation["dat"] > allocation["jud"], "dat allocation must exceed jud"
+    assert allocation["wik"] > allocation["leg"], "wik allocation must exceed leg"
 
     # dat should receive over 50% and wik over 45%
     dat_frac = allocation["dat"] / target
@@ -183,7 +176,9 @@ def test_select_distributed_shards_spans_range():
     indices = [files.index(s) for s in selected]
     # Min index should be in first third, max index in last third
     assert min(indices) < n // 3, "No shard selected from first third of collection"
-    assert max(indices) >= (2 * n) // 3, "No shard selected from last third of collection"
+    assert max(indices) >= (2 * n) // 3, (
+        "No shard selected from last third of collection"
+    )
 
 
 def test_select_distributed_shards_determinism():
@@ -210,4 +205,6 @@ def test_stratified_sampler_underfill_reporting():
     assert counts["jud"] == 100, "jud should be full"
 
     # Sampler must NOT be full because wik is underfilled
-    assert not sampler.is_full(), "Sampler should not report full when wik is underfilled"
+    assert not sampler.is_full(), (
+        "Sampler should not report full when wik is underfilled"
+    )

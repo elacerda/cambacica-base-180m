@@ -5,7 +5,6 @@ import pytest
 
 from cambacica.corpus.schema import (
     DOCUMENT_FIELDS,
-    PARQUET_SCHEMA,
     NormalizedDocument,
     compute_content_sha256,
     load_sample_parquet,
@@ -95,12 +94,14 @@ def test_null_handling():
 def test_parquet_save_and_load(tmp_path: Path):
     """Verify roundtrip persistence to Parquet with schema enforcement."""
     docs = [
-        validate_and_normalize({
-            "text": f"Documento número {i}",
-            "source": "test_source",
-            "original_id": f"id_{i}",
-            "quality_score": float(i) / 10.0,
-        })
+        validate_and_normalize(
+            {
+                "text": f"Documento número {i}",
+                "source": "test_source",
+                "original_id": f"id_{i}",
+                "quality_score": float(i) / 10.0,
+            }
+        )
         for i in range(10)
     ]
     out_file = tmp_path / "test_sample.parquet"

@@ -13,10 +13,7 @@ import requests
 
 from cambacica.corpus.manifest import ProvenanceManifest
 from cambacica.corpus.sampling import DeterministicReservoirSampler
-from cambacica.corpus.schema import (
-    NormalizedDocument,
-    validate_and_normalize,
-)
+from cambacica.corpus.schema import validate_and_normalize
 from cambacica.corpus.sources.base import (
     BaseSourceSampler,
     resolve_hf_commit_sha,
@@ -73,9 +70,7 @@ class ParlamentoPTSampler(BaseSourceSampler):
         """
         if max_stream_lines is None:
             max_stream_lines = max(size * 4, 40000)
-        commit_sha = resolve_hf_commit_sha(
-            self.canonical_id, revision=self.revision
-        )
+        commit_sha = resolve_hf_commit_sha(self.canonical_id, revision=self.revision)
         est_bytes = max_stream_lines * 250
         return {
             "source": self.source_name,
@@ -143,9 +138,7 @@ class ParlamentoPTSampler(BaseSourceSampler):
         if max_stream_lines is None:
             max_stream_lines = max(size * 4, 40000)
 
-        commit_sha = resolve_hf_commit_sha(
-            self.canonical_id, revision=self.revision
-        )
+        commit_sha = resolve_hf_commit_sha(self.canonical_id, revision=self.revision)
         reservoir = DeterministicReservoirSampler(capacity=size, seed=seed)
 
         line_count = 0

@@ -82,9 +82,7 @@ def handle_sample(args: argparse.Namespace) -> int:
 
     size = args.size
     if size is None:
-        size = (
-            source_cfg.get("modes", {}).get(mode, {}).get("default_size", 1000)
-        )
+        size = source_cfg.get("modes", {}).get(mode, {}).get("default_size", 1000)
 
     if args.output_dir:
         out_dir = Path(args.output_dir)
@@ -136,14 +134,14 @@ def handle_sample(args: argparse.Namespace) -> int:
             **sample_kwargs,
         )
         manifest_file = parquet_path.parent / f"manifest_{mode}.json"
-        print(f"\n[OK] Sample generated successfully!")
+        print("\n[OK] Sample generated successfully!")
         print(f"     Parquet:  {parquet_path} ({parquet_path.stat().st_size:,} bytes)")
         print(f"     Manifest: {manifest_file}")
         print(f"     Documents collected: {manifest.document_count:,}")
         underfill = manifest.stats.get("underfill")
         if underfill:
             print(
-                f"\n[WARNING] Underfill detected: "
+                "\n[WARNING] Underfill detected: "
                 + ", ".join(f"{k}={v}" for k, v in underfill.items())
             )
         return 0
@@ -238,7 +236,9 @@ def handle_compare(args: argparse.Namespace) -> int:
     print("\n=== Exact Duplicate Report (Classified by Relationship) ===")
     print(f"Total Unique Hashes:              {exact_report.total_unique_hashes:,}")
     print(f"Total Duplicate Hashes:           {exact_report.total_duplicate_hashes:,}")
-    print(f"Total Redundant Doc Occurrences:  {exact_report.total_duplicate_documents:,}")
+    print(
+        f"Total Redundant Doc Occurrences:  {exact_report.total_duplicate_documents:,}"
+    )
 
     print("\n--- A. WITHIN_FILE_DUPLICATES ---")
     print(
@@ -294,7 +294,9 @@ def handle_compare(args: argparse.Namespace) -> int:
         )
 
         cross_source_near = [c for c in candidates if c.relationship == "CROSS_SOURCE"]
-        cross_mode_near = [c for c in candidates if c.relationship == "SAME_SOURCE_CROSS_MODE"]
+        cross_mode_near = [
+            c for c in candidates if c.relationship == "SAME_SOURCE_CROSS_MODE"
+        ]
         within_file_near = [c for c in candidates if c.relationship == "WITHIN_FILE"]
 
         print(f"\n--- D. NEAR_DUPLICATES (MinHash Jaccard >= {args.threshold}) ---")
@@ -302,7 +304,9 @@ def handle_compare(args: argparse.Namespace) -> int:
         print("\n  [D1] CROSS_SOURCE Near-Duplicates:")
         print("       (Genuine cross-corpus similarity candidates)")
         if cross_source_near:
-            print(f"       Found {len(cross_source_near)} cross-source candidate pair(s):")
+            print(
+                f"       Found {len(cross_source_near)} cross-source candidate pair(s):"
+            )
             for c in cross_source_near:
                 print(
                     f"       [{c.source_1}:{c.doc_id_1}] <-> [{c.source_2}:{c.doc_id_2}] "
@@ -360,7 +364,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sample_parser.add_argument(
         "source",
-        choices=["carolina", "wikipedia_pt", "parlamento_pt", "gigaverbo_v2", "gutenberg_pt"],
+        choices=[
+            "carolina",
+            "wikipedia_pt",
+            "parlamento_pt",
+            "gigaverbo_v2",
+            "gutenberg_pt",
+        ],
         help="Source identifier to sample.",
     )
     sample_parser.add_argument(
@@ -419,7 +429,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Subcommand: inspect
     inspect_parser = subparsers.add_parser(
-        "inspect", help="Inspect diagnostic metrics for a sample Parquet file or directory."
+        "inspect",
+        help="Inspect diagnostic metrics for a sample Parquet file or directory.",
     )
     inspect_parser.add_argument(
         "path",
@@ -483,6 +494,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     import os
+
     sys.stdout.flush()
     sys.stderr.flush()
     ret = main()

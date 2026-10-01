@@ -38,11 +38,9 @@ import pyarrow.parquet as pq
 from cambacica.corpus.manifest import ProvenanceManifest
 from cambacica.corpus.sampling import (
     DeterministicReservoirSampler,
+    stable_hash64,
 )
-from cambacica.corpus.schema import (
-    NormalizedDocument,
-    validate_and_normalize,
-)
+from cambacica.corpus.schema import validate_and_normalize
 from cambacica.corpus.sources.base import (
     BaseSourceSampler,
     resolve_hf_commit_sha,
@@ -159,6 +157,81 @@ def load_gigaverbo_exclusions(
     return exact_blocked, patterns, config_sha
 
 
+def get_exclusion_rules_map(config_path: Path | str) -> Dict[str, str]:
+    """Build a mapping from normalized subset patterns to rule explanations.
+
+    Parameters
+    ----------
+    config_path : Path or str
+        Path to gigaverbo_exclusions.yaml.
+
+    Returns
+    -------
+    dict of str to str
+        Mapping of pattern strings to descriptive rule strings.
+    """
+    path = Path(config_path)
+    if not path.is_file():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    rules: Dict[str, str] = {}
+    exclusions = data.get("exclusions", {})
+    for group_name, items in exclusions.items():
+        if isinstance(items, list):
+            for entry in items:
+                if isinstance(entry, dict):
+                    name = entry.get("name", group_name)
+                    reason = entry.get("reason", "")
+                    rule_label = f"{group_name}/{name}: {reason}".strip()
+                    for pat in entry.get("match_patterns", []):
+                        rules[pat.lower()] = rule_label
+    return rules
+
+
+def match_subset_exclusion(
+    subset_name: Optional[str],
+    exact_blocked: Set[str],
+    patterns: List[str],
+    rules_map: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
+    """Check if a subset is excluded and return the matched rule description.
+
+    Parameters
+    ----------
+    subset_name : str or None
+        Raw subset name from GigaVerbo metadata.
+    exact_blocked : set of str
+        Set of normalized blocked subset strings.
+    patterns : list of str
+        Wildcard patterns.
+    rules_map : dict of str to str, optional
+        Mapping from pattern/string to rule explanation.
+
+    Returns
+    -------
+    str or None
+        Rule description if excluded, None otherwise.
+    """
+    if not subset_name:
+        return None
+    norm_name = str(subset_name).strip().lower()
+    if norm_name in exact_blocked:
+        if rules_map and norm_name in rules_map:
+            return rules_map[norm_name]
+        for pat, desc in (rules_map or {}).items():
+            if fnmatch.fnmatch(norm_name, pat):
+                return desc
+        return f"blocked_subsets:{norm_name}"
+
+    for pat in patterns:
+        if fnmatch.fnmatch(norm_name, pat):
+            if rules_map and pat in rules_map:
+                return rules_map[pat]
+            return f"pattern:{pat}"
+
+    return None
+
+
 def is_subset_excluded(
     subset_name: Optional[str],
     exact_blocked: Set[str],
@@ -180,31 +253,79 @@ def is_subset_excluded(
     bool
         True if the subset must be excluded, False otherwise.
     """
-    if not subset_name:
-        return False
-    norm_name = str(subset_name).strip().lower()
+    return match_subset_exclusion(subset_name, exact_blocked, patterns) is not None
 
-    if norm_name in exact_blocked:
-        return True
 
-    for pat in patterns:
-        if fnmatch.fnmatch(norm_name, pat):
-            return True
+def select_distributed_row_groups(
+    num_row_groups: int,
+    n_groups: int,
+    seed: int = 42,
+    shard_name: str = "",
+) -> List[int]:
+    """Select deterministic row-group indices distributed across a shard.
 
-    return False
+    Guarantees that row groups span the physical file (early, middle, late)
+    rather than always picking row group 0.
+
+    Parameters
+    ----------
+    num_row_groups : int
+        Total number of row groups in the Parquet shard.
+    n_groups : int
+        Target number of row groups to select.
+    seed : int, default 42
+        Deterministic random seed.
+    shard_name : str, default ""
+        Shard identifier used for deterministic hash perturbation.
+
+    Returns
+    -------
+    list of int
+        Sorted list of selected row-group indices (0-indexed).
+    """
+    if num_row_groups <= 0:
+        return []
+    if num_row_groups <= n_groups or n_groups <= 0:
+        return list(range(num_row_groups))
+
+    step = num_row_groups / n_groups
+    selected: List[int] = []
+    seen: Set[int] = set()
+
+    for i in range(n_groups):
+        center = int(i * step + step / 2)
+        center = min(center, num_row_groups - 1)
+        candidates = [max(0, center - 1), center, min(num_row_groups - 1, center + 1)]
+        best = min(
+            candidates,
+            key=lambda idx: stable_hash64(f"{shard_name}:rg:{idx}", seed=seed),
+        )
+        if best not in seen:
+            seen.add(best)
+            selected.append(best)
+
+    if len(selected) < n_groups:
+        for idx in range(num_row_groups):
+            if idx not in seen:
+                seen.add(idx)
+                selected.append(idx)
+                if len(selected) >= n_groups:
+                    break
+
+    return sorted(selected)
 
 
 class GigaVerboSampler(BaseSourceSampler):
     """Sampler for Polygl0t/gigaverbo-v2 (edu_high).
 
     Supports:
-    - 'audit': Samples documents across ALL shards without subset filtering
-      to inspect the full unfiltered upstream distribution.  Each shard
-      contributes at most ``quota_per_shard`` documents.
+    - 'audit': Samples documents across ALL shards visiting distributed
+      row groups per shard without subset filtering to inspect the full
+      unfiltered upstream distribution.
     - 'candidate': Applies the exclusion policy before sampling.  Uses a
-      deterministic shard selection distributed across the full 56-shard
+      deterministic shard and row-group selection distributed across the full
       collection.  Reports subsets encountered before exclusions, exclusion
-      counts by subset, and subsets remaining.
+      counts by subset, rules matched, and subsets remaining.
     """
 
     def __init__(self, config: Optional[dict] = None) -> None:
@@ -218,6 +339,7 @@ class GigaVerboSampler(BaseSourceSampler):
         mode: str = "candidate",
         size: int = 25000,
         num_shards_to_visit: int = 8,
+        row_groups_per_shard: int = 4,
         exclusions_path: Optional[Path | str] = None,
         **kwargs,
     ) -> dict:
@@ -232,6 +354,8 @@ class GigaVerboSampler(BaseSourceSampler):
         num_shards_to_visit : int, default 8
             For 'candidate' mode: number of evenly-distributed shards.
             For 'audit' mode: all 56 shards are visited regardless.
+        row_groups_per_shard : int, default 4
+            Number of distributed row groups to visit per shard.
         exclusions_path : Path or str or None, optional
             Path to exclusions config file.
         **kwargs : any
@@ -252,19 +376,24 @@ class GigaVerboSampler(BaseSourceSampler):
 
         total_shards = 56  # known upstream count
         if mode == "audit":
-            frame = (
-                f"audit_full_shard_scan (all {total_shards} shards, "
-                f"small deterministic quota per shard, no exclusions applied)"
-            )
-            quota_per_shard = max(1, size // total_shards)
             visit_count = total_shards
-        else:
-            visit_count = num_shards_to_visit
             frame = (
-                f"candidate_distributed_shard_subsample ({visit_count} of "
-                f"{total_shards} shards evenly distributed; exclusion policy applied)"
+                f"distributed_rowgroup_audit (all {total_shards} shards, "
+                f"{row_groups_per_shard} distributed row groups per shard, "
+                f"no exclusions applied)"
             )
-            quota_per_shard = max(1, size // visit_count)
+            total_rg = visit_count * row_groups_per_shard
+            quota_per_rg = max(1, size // total_rg)
+        else:
+            visit_count = min(num_shards_to_visit, total_shards)
+            frame = (
+                f"distributed_rowgroup_candidate ({visit_count} of "
+                f"{total_shards} shards evenly distributed, "
+                f"{row_groups_per_shard} distributed row groups per shard; "
+                f"exclusion policy applied before sampling)"
+            )
+            total_rg = visit_count * row_groups_per_shard
+            quota_per_rg = max(1, size // total_rg)
 
         return {
             "source": self.source_name,
@@ -280,16 +409,17 @@ class GigaVerboSampler(BaseSourceSampler):
             "sampling_frame": frame,
             "selected_partitions": [
                 f"datasets/{self.canonical_id}/{self.split}: "
-                f"{visit_count} shards visited"
+                f"{visit_count} shards visited ({row_groups_per_shard} row groups/shard)"
             ],
             "safety_limits": {
                 "shards_visited": visit_count,
-                "quota_per_shard": quota_per_shard,
+                "row_groups_per_shard": row_groups_per_shard,
+                "quota_per_row_group": quota_per_rg,
                 "batch_size": 2048,
             },
             "exclusion_config_hash": config_sha,
             "estimated_transfer": (
-                f"~{visit_count * 10}–{visit_count * 25} MB "
+                f"~{visit_count * row_groups_per_shard * 2}–{visit_count * row_groups_per_shard * 5} MB "
                 f"(column-pruned Parquet range requests)"
             ),
         }
@@ -302,10 +432,11 @@ class GigaVerboSampler(BaseSourceSampler):
         output_dir: Optional[Path | str] = None,
         exclusions_path: Optional[Path | str] = None,
         num_shards_to_visit: int = 8,
+        row_groups_per_shard: int = 4,
         batch_size: int = 2048,
         **kwargs,
     ) -> Tuple[Path, ProvenanceManifest]:
-        """Execute deterministic sampling from GigaVerbo-v2 edu_high.
+        """Execute deterministic distributed row-group sampling from GigaVerbo-v2.
 
         Parameters
         ----------
@@ -322,6 +453,8 @@ class GigaVerboSampler(BaseSourceSampler):
         num_shards_to_visit : int, default 8
             For 'candidate' mode: number of evenly-distributed shards to visit.
             For 'audit' mode: all available shards are visited regardless.
+        row_groups_per_shard : int, default 4
+            Number of distributed row groups to visit per shard.
         batch_size : int, default 2048
             RecordBatch read size.
         **kwargs : any
@@ -343,11 +476,13 @@ class GigaVerboSampler(BaseSourceSampler):
         exact_blocked: Set[str] = set()
         patterns: List[str] = []
         config_sha: Optional[str] = None
+        rules_map: Dict[str, str] = {}
 
         if mode == "candidate":
             exact_blocked, patterns, config_sha = load_gigaverbo_exclusions(
                 exclusions_path
             )
+            rules_map = get_exclusion_rules_map(exclusions_path)
 
         commit_sha = resolve_hf_commit_sha(self.canonical_id, revision="main")
         fs = HfFileSystem()
@@ -361,115 +496,149 @@ class GigaVerboSampler(BaseSourceSampler):
         total_shards = len(all_shard_files)
 
         if mode == "audit":
-            # Audit: visit EVERY shard with a small per-shard quota
             selected_shards = all_shard_files
-            quota_per_shard = max(1, size // total_shards)
             sampling_frame = (
-                f"audit_full_shard_scan (all {total_shards} shards, "
-                f"quota_per_shard={quota_per_shard}, no exclusions applied)"
+                f"distributed_rowgroup_audit (all {total_shards} shards, "
+                f"{row_groups_per_shard} distributed row groups per shard, "
+                f"no exclusions applied)"
             )
         else:
-            # Candidate: select num_shards_to_visit evenly distributed shards
             step = max(1, total_shards // num_shards_to_visit)
             selected_shards = [
-                all_shard_files[i]
-                for i in range(0, total_shards, step)
+                all_shard_files[i] for i in range(0, total_shards, step)
             ][:num_shards_to_visit]
-            quota_per_shard = max(1, size // len(selected_shards))
             sampling_frame = (
-                f"candidate_distributed_shard_subsample "
-                f"({len(selected_shards)} of {total_shards} shards evenly distributed; "
+                f"distributed_rowgroup_candidate "
+                f"({len(selected_shards)} of {total_shards} shards evenly distributed, "
+                f"{row_groups_per_shard} distributed row groups per shard; "
                 f"exclusion policy applied before sampling)"
             )
 
-        reservoir = DeterministicReservoirSampler(capacity=size, seed=seed)
+        total_rg_targets = len(selected_shards) * row_groups_per_shard
+        quota_per_rg = max(1, size // total_rg_targets) if total_rg_targets else size
 
+        reservoir = DeterministicReservoirSampler(capacity=size, seed=seed)
         target_cols = ["id", "source", "subset", "edu_score", "text"]
-        # Tracking for audit/exclusion reporting
+
         subsets_before_exclusion: Dict[str, int] = {}
         exclusion_counts_by_subset: Dict[str, int] = {}
+        exclusion_rules_matched: Dict[str, str] = {}
         subsets_after_exclusion: Dict[str, int] = {}
+        shard_row_groups_map: Dict[str, List[int]] = {}
 
+        total_row_groups_visited = 0
         records_examined = 0
         byte_counter = [0]
-        stopping_reason = "shards_exhausted"
+        stopping_reason = "shards_and_row_groups_exhausted"
 
         for shard_idx, shard_path in enumerate(selected_shards):
-            shard_accepted = 0
+            shard_name = Path(shard_path).name
             try:
                 with fs.open(shard_path, "rb") as f:
                     wrapped_f = _CountingSeekableReader(f, byte_counter)
                     pf = pq.ParquetFile(wrapped_f)
-                    for batch in pf.iter_batches(
-                        batch_size=batch_size, columns=target_cols
-                    ):
-                        b_dict = batch.to_pydict()
-                        texts = b_dict.get("text", [])
-                        ids = b_dict.get("id", [])
-                        sources = b_dict.get("source", [])
-                        subsets = b_dict.get("subset", [])
-                        scores = b_dict.get("edu_score", [])
+                    num_rgs = getattr(pf, "num_row_groups", 1) or 1
+                    chosen_rgs = select_distributed_row_groups(
+                        num_row_groups=num_rgs,
+                        n_groups=row_groups_per_shard,
+                        seed=seed + shard_idx,
+                        shard_name=shard_name,
+                    )
+                    shard_row_groups_map[shard_name] = chosen_rgs
 
-                        for i in range(len(texts)):
-                            records_examined += 1
-                            text = texts[i]
-                            if not text or len(text.strip()) < 50:
-                                continue
+                    for rg_idx in chosen_rgs:
+                        total_row_groups_visited += 1
+                        rg_accepted = 0
 
-                            subset = subsets[i] if i < len(subsets) else None
-                            doc_id = str(ids[i]) if i < len(ids) else f"{shard_idx}_{i}"
-                            src_url = sources[i] if i < len(sources) else None
-                            edu_sc = scores[i] if i < len(scores) else None
-
-                            # Track subsets before any exclusion
-                            subset_key = str(subset) if subset else "(null)"
-                            subsets_before_exclusion[subset_key] = (
-                                subsets_before_exclusion.get(subset_key, 0) + 1
+                        try:
+                            batch_iter = pf.iter_batches(
+                                batch_size=batch_size,
+                                row_groups=[rg_idx],
+                                columns=target_cols,
+                            )
+                        except TypeError:
+                            batch_iter = pf.iter_batches(
+                                batch_size=batch_size,
+                                columns=target_cols,
                             )
 
-                            if mode == "candidate" and is_subset_excluded(
-                                subset, exact_blocked, patterns
-                            ):
-                                exclusion_counts_by_subset[subset_key] = (
-                                    exclusion_counts_by_subset.get(subset_key, 0) + 1
+                        for batch in batch_iter:
+                            b_dict = batch.to_pydict()
+                            texts = b_dict.get("text", [])
+                            ids = b_dict.get("id", [])
+                            sources = b_dict.get("source", [])
+                            subsets = b_dict.get("subset", [])
+                            scores = b_dict.get("edu_score", [])
+
+                            for i in range(len(texts)):
+                                records_examined += 1
+                                text = texts[i]
+                                if not text or len(text.strip()) < 50:
+                                    continue
+
+                                subset = subsets[i] if i < len(subsets) else None
+                                doc_id = (
+                                    str(ids[i])
+                                    if i < len(ids)
+                                    else f"{shard_idx}_{rg_idx}_{i}"
                                 )
-                                continue
+                                src_url = sources[i] if i < len(sources) else None
+                                edu_sc = scores[i] if i < len(scores) else None
 
-                            raw_doc = {
-                                "text": text,
-                                "source": "gigaverbo_v2",
-                                "source_revision": self.revision,
-                                "subset": subset,
-                                "original_id": doc_id,
-                                "original_url": src_url,
-                                "license": None,  # Do not fabricate per-row license
-                                "language": "pt",
-                                "language_score": 1.0,
-                                "variety": None,
-                                "quality_score": float(edu_sc) if edu_sc is not None else None,
-                                "publication_date": None,
-                                "domain_category": subset,
-                            }
-
-                            norm_doc = validate_and_normalize(raw_doc)
-                            if reservoir.add(doc_id, norm_doc):
-                                shard_accepted += 1
-                                subsets_after_exclusion[subset_key] = (
-                                    subsets_after_exclusion.get(subset_key, 0) + 1
+                                subset_key = str(subset) if subset else "(null)"
+                                subsets_before_exclusion[subset_key] = (
+                                    subsets_before_exclusion.get(subset_key, 0) + 1
                                 )
 
-                            if shard_accepted >= quota_per_shard * 2:
+                                if mode == "candidate":
+                                    matched_rule = match_subset_exclusion(
+                                        subset, exact_blocked, patterns, rules_map
+                                    )
+                                    if matched_rule:
+                                        exclusion_counts_by_subset[subset_key] = (
+                                            exclusion_counts_by_subset.get(
+                                                subset_key, 0
+                                            )
+                                            + 1
+                                        )
+                                        if subset_key not in exclusion_rules_matched:
+                                            exclusion_rules_matched[subset_key] = (
+                                                matched_rule
+                                            )
+                                        continue
+
+                                raw_doc = {
+                                    "text": text,
+                                    "source": "gigaverbo_v2",
+                                    "source_revision": self.revision,
+                                    "subset": subset,
+                                    "original_id": doc_id,
+                                    "original_url": src_url,
+                                    "license": None,
+                                    "language": "pt",
+                                    "language_score": 1.0,
+                                    "variety": None,
+                                    "quality_score": float(edu_sc)
+                                    if edu_sc is not None
+                                    else None,
+                                    "publication_date": None,
+                                    "domain_category": subset,
+                                }
+
+                                norm_doc = validate_and_normalize(raw_doc)
+                                if reservoir.add(doc_id, norm_doc):
+                                    subsets_after_exclusion[subset_key] = (
+                                        subsets_after_exclusion.get(subset_key, 0) + 1
+                                    )
+                                rg_accepted += 1
+                                if rg_accepted >= max(10, quota_per_rg * 2):
+                                    break
+
+                            if rg_accepted >= max(10, quota_per_rg * 2):
                                 break
-
-                        if shard_accepted >= quota_per_shard * 2:
-                            break
             except Exception as e:
                 logger.warning(f"Error streaming shard {shard_path}: {e}")
                 continue
-
-            if len(reservoir) >= size:
-                stopping_reason = "target_size_reached"
-                break
 
         documents = reservoir.get_sample()
         if len(documents) >= size:
@@ -496,13 +665,17 @@ class GigaVerboSampler(BaseSourceSampler):
             exclusion_config_hash=config_sha,
         )
 
-        # Enrich manifest with exclusion diagnostics
         manifest.stats["subsets_before_exclusion"] = subsets_before_exclusion
+        manifest.stats["records_encountered_per_subset"] = subsets_before_exclusion
         if mode == "candidate":
             manifest.stats["exclusion_counts_by_subset"] = exclusion_counts_by_subset
+            manifest.stats["exclusion_rules_matched"] = exclusion_rules_matched
             manifest.stats["subsets_after_exclusion"] = subsets_after_exclusion
             manifest.stats["total_excluded"] = sum(exclusion_counts_by_subset.values())
         manifest.stats["shards_visited"] = len(selected_shards)
+        manifest.stats["row_groups_visited"] = total_row_groups_visited
+        manifest.stats["selected_shards"] = [Path(s).name for s in selected_shards]
+        manifest.stats["selected_row_groups"] = shard_row_groups_map
         manifest_path = output_dir / f"manifest_{mode}.json"
         manifest.save(manifest_path)
         return parquet_path, manifest

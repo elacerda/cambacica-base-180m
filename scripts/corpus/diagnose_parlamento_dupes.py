@@ -21,11 +21,6 @@ from collections import Counter
 from pathlib import Path
 import sys
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SRC_DIR = REPO_ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-
 import pyarrow.parquet as pq
 
 
@@ -122,7 +117,9 @@ def analyze_parlamento_duplicates(
     dict
         Diagnostic report.
     """
-    table = pq.read_table(parquet_path, columns=["text", "content_sha256", "original_id"])
+    table = pq.read_table(
+        parquet_path, columns=["text", "content_sha256", "original_id"]
+    )
     hashes = table["content_sha256"].to_pylist()
     texts = table["text"].to_pylist()
     ids = table["original_id"].to_pylist()
@@ -138,9 +135,7 @@ def analyze_parlamento_duplicates(
 
     # Count occurrences
     dup_hashes = {
-        sha: entries
-        for sha, entries in hash_to_entries.items()
-        if len(entries) > 1
+        sha: entries for sha, entries in hash_to_entries.items() if len(entries) > 1
     }
     total_dup_occurrences = sum(len(v) - 1 for v in dup_hashes.values())
 
@@ -156,14 +151,16 @@ def analyze_parlamento_duplicates(
         text = entries[0][0] or ""
         category = _categorize(text)
         preview = text[:preview_len].replace("\n", " ").strip()
-        top_entries.append({
-            "hash": sha,
-            "occurrences": len(entries),
-            "category": category,
-            "n_words": len(text.split()),
-            "n_chars": len(text),
-            "preview": preview,
-        })
+        top_entries.append(
+            {
+                "hash": sha,
+                "occurrences": len(entries),
+                "category": category,
+                "n_words": len(text.split()),
+                "n_chars": len(text),
+                "preview": preview,
+            }
+        )
 
     # Category breakdown across ALL duplicate hashes
     category_counts: Counter = Counter()
@@ -177,7 +174,9 @@ def analyze_parlamento_duplicates(
         "total_unique_hashes": len(hash_to_entries),
         "total_duplicate_hashes": len(dup_hashes),
         "total_duplicate_occurrences": total_dup_occurrences,
-        "duplicate_rate": round(total_dup_occurrences / total_docs, 4) if total_docs else 0,
+        "duplicate_rate": round(total_dup_occurrences / total_docs, 4)
+        if total_docs
+        else 0,
         "category_breakdown": dict(category_counts.most_common()),
         "top_duplicates": top_entries,
         "note": (
@@ -251,9 +250,7 @@ def main() -> int:
     parser.add_argument(
         "--top", type=int, default=20, help="Number of top duplicate hashes to show."
     )
-    parser.add_argument(
-        "--json", action="store_true", help="Output raw JSON."
-    )
+    parser.add_argument("--json", action="store_true", help="Output raw JSON.")
     args = parser.parse_args()
 
     path = Path(args.parquet)
@@ -271,6 +268,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     import os
+
     sys.stdout.flush()
     sys.stderr.flush()
     ret = main()

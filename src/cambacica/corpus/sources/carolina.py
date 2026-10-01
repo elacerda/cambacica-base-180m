@@ -74,12 +74,12 @@ CAROLINA_V2_0_1_COMMIT_SHA: str = "55e63a519393c70a48dcfa14a558499c6bb0583b"
 
 TAXONOMY_POPULATION: Dict[str, int] = {
     "dat": 1_074_032,
-    "wik":   957_501,
-    "jud":    38_187,
-    "uni":    26_409,
-    "soc":     8_862,
-    "leg":     3_982,
-    "pub":        26,
+    "wik": 957_501,
+    "jud": 38_187,
+    "uni": 26_409,
+    "soc": 8_862,
+    "leg": 3_982,
+    "pub": 26,
 }
 # Sanity-check: sum must equal the documented total.
 assert sum(TAXONOMY_POPULATION.values()) == 2_108_999, (
@@ -289,10 +289,17 @@ def iter_carolina_xml_files(
         for entry in entries:
             if entry.endswith(".xml.gz"):
                 found.append(entry)
-            elif not entry.endswith(".sha256") and not entry.endswith(".py") and not entry.endswith(".sh") and not entry.endswith(".rng"):
+            elif (
+                not entry.endswith(".sha256")
+                and not entry.endswith(".py")
+                and not entry.endswith(".sh")
+                and not entry.endswith(".rng")
+            ):
                 # Recurse into sub-directories (e.g. pt-BR/, pt/)
                 # Guard against hidden/temp files
-                if "." not in entry.split("/")[-1] or entry.split("/")[-1].startswith("."):
+                if "." not in entry.split("/")[-1] or entry.split("/")[-1].startswith(
+                    "."
+                ):
                     # Likely a directory – recurse
                     try:
                         if fs.isdir(entry):
@@ -302,7 +309,6 @@ def iter_carolina_xml_files(
 
     _scan(full_dir)
     return sorted(found)
-
 
 
 def _select_distributed_shards(
@@ -593,9 +599,7 @@ class CarolinaSampler(BaseSourceSampler):
             documents = sampler.get_all_samples()
             total_obtained = len(documents)
             if underfilled:
-                stopping_reason = (
-                    f"quota_underfill ({', '.join(f'{k}:{v}/{quotas[k]}' for k, v in underfilled.items())})"
-                )
+                stopping_reason = f"quota_underfill ({', '.join(f'{k}:{v}/{quotas[k]}' for k, v in underfilled.items())})"
             elif total_obtained >= size:
                 stopping_reason = "target_size_reached"
 
@@ -626,9 +630,7 @@ class CarolinaSampler(BaseSourceSampler):
                 selected = _select_distributed_shards(
                     all_files, n_shards=shards_per_taxonomy, seed=seed
                 )
-                tax_reservoir = DeterministicReservoirSampler(
-                    capacity=alloc, seed=seed
-                )
+                tax_reservoir = DeterministicReservoirSampler(capacity=alloc, seed=seed)
                 for raw_doc in stream_carolina_taxonomy(
                     fs,
                     taxonomy,
@@ -639,7 +641,10 @@ class CarolinaSampler(BaseSourceSampler):
                     key = raw_doc.get("original_id") or raw_doc["text"][:100]
                     norm_doc = validate_and_normalize(raw_doc)
                     tax_reservoir.add(key, norm_doc)
-                    if len(tax_reservoir) >= alloc and tax_reservoir.total_seen >= alloc * 3:
+                    if (
+                        len(tax_reservoir) >= alloc
+                        and tax_reservoir.total_seen >= alloc * 3
+                    ):
                         break
 
                 actual = len(tax_reservoir)
@@ -654,9 +659,7 @@ class CarolinaSampler(BaseSourceSampler):
             documents = all_documents
             total_obtained = len(documents)
             if underfilled:
-                stopping_reason = (
-                    f"allocation_underfill ({', '.join(f'{k}:{v}/{allocation[k]}' for k, v in underfilled.items())})"
-                )
+                stopping_reason = f"allocation_underfill ({', '.join(f'{k}:{v}/{allocation[k]}' for k, v in underfilled.items())})"
             elif total_obtained >= size:
                 stopping_reason = "target_size_reached"
 
@@ -693,9 +696,14 @@ class CarolinaSampler(BaseSourceSampler):
             stopping_reason=stopping_reason,
         )
         manifest.stats["taxonomy_allocation"] = (
-            allocation if mode == "representative"
-            else {k: v for k, v in quotas.items()}
-        ) if mode in ("representative", "diagnostic") else {}
+            (
+                allocation
+                if mode == "representative"
+                else {k: v for k, v in quotas.items()}
+            )
+            if mode in ("representative", "diagnostic")
+            else {}
+        )
         manifest.stats["taxonomy_actual_counts"] = taxonomy_counts
         if underfilled:
             manifest.stats["underfill"] = underfilled

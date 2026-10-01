@@ -14,10 +14,7 @@ import datasets
 
 from cambacica.corpus.manifest import ProvenanceManifest
 from cambacica.corpus.sampling import DeterministicReservoirSampler
-from cambacica.corpus.schema import (
-    NormalizedDocument,
-    validate_and_normalize,
-)
+from cambacica.corpus.schema import validate_and_normalize
 from cambacica.corpus.sources.base import (
     BaseSourceSampler,
     ensure_user_hf_cache,

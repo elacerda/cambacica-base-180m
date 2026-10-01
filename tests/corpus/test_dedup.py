@@ -1,7 +1,6 @@
 """Unit tests for exact duplicate detection and MinHash diagnostics."""
 
 from pathlib import Path
-import pytest
 
 from cambacica.corpus.dedup.exact import find_cross_source_exact_duplicates
 from cambacica.corpus.dedup.minhash import (
@@ -9,24 +8,33 @@ from cambacica.corpus.dedup.minhash import (
     compute_minhash_signature,
     estimate_jaccard_similarity,
     find_minhash_near_duplicates,
-    get_word_shingles,
 )
 from cambacica.corpus.schema import save_sample_parquet, validate_and_normalize
 
 
 def test_cross_source_exact_duplicates(tmp_path: Path):
     """Verify exact duplicate detection across multiple sample files."""
-    text_shared = "Este documento existe em duas fontes diferentes para teste de colisão exata."
+    text_shared = (
+        "Este documento existe em duas fontes diferentes para teste de colisão exata."
+    )
     text_unique1 = "Texto exclusivo da primeira fonte de dados para validação."
     text_unique2 = "Texto exclusivo da segunda fonte de dados para validação."
 
     docs1 = [
-        validate_and_normalize({"text": text_shared, "source": "src_alpha", "original_id": "a1"}),
-        validate_and_normalize({"text": text_unique1, "source": "src_alpha", "original_id": "a2"}),
+        validate_and_normalize(
+            {"text": text_shared, "source": "src_alpha", "original_id": "a1"}
+        ),
+        validate_and_normalize(
+            {"text": text_unique1, "source": "src_alpha", "original_id": "a2"}
+        ),
     ]
     docs2 = [
-        validate_and_normalize({"text": text_shared, "source": "src_beta", "original_id": "b1"}),
-        validate_and_normalize({"text": text_unique2, "source": "src_beta", "original_id": "b2"}),
+        validate_and_normalize(
+            {"text": text_shared, "source": "src_beta", "original_id": "b1"}
+        ),
+        validate_and_normalize(
+            {"text": text_unique2, "source": "src_beta", "original_id": "b2"}
+        ),
     ]
 
     p1 = tmp_path / "src1.parquet"
@@ -47,18 +55,32 @@ def test_cross_source_exact_duplicates(tmp_path: Path):
 
 def test_within_file_duplicates(tmp_path: Path):
     """Verify category A: within-file duplicates are counted separately."""
-    text_dup = "A mesma frase aparece duas vezes no mesmo arquivo de amostra para teste."
+    text_dup = (
+        "A mesma frase aparece duas vezes no mesmo arquivo de amostra para teste."
+    )
     docs = [
-        validate_and_normalize({"text": text_dup, "source": "carolina", "original_id": "r1"}),
-        validate_and_normalize({"text": text_dup, "source": "carolina", "original_id": "r2"}),
-        validate_and_normalize({"text": "Texto único aqui.", "source": "carolina", "original_id": "r3"}),
+        validate_and_normalize(
+            {"text": text_dup, "source": "carolina", "original_id": "r1"}
+        ),
+        validate_and_normalize(
+            {"text": text_dup, "source": "carolina", "original_id": "r2"}
+        ),
+        validate_and_normalize(
+            {"text": "Texto único aqui.", "source": "carolina", "original_id": "r3"}
+        ),
     ]
     p = tmp_path / "representative.parquet"
     save_sample_parquet(docs, p)
 
     # Need a second file (any) for compare to run
     docs2 = [
-        validate_and_normalize({"text": "Outro texto completamente diferente aqui.", "source": "gigaverbo_v2", "original_id": "g1"}),
+        validate_and_normalize(
+            {
+                "text": "Outro texto completamente diferente aqui.",
+                "source": "gigaverbo_v2",
+                "original_id": "g1",
+            }
+        ),
     ]
     p2 = tmp_path / "audit.parquet"
     save_sample_parquet(docs2, p2)
@@ -75,12 +97,20 @@ def test_same_source_cross_mode_overlap(tmp_path: Path):
 
     # Two files with the same source name but different modes
     docs_rep = [
-        validate_and_normalize({"text": text_overlap, "source": "carolina", "original_id": "r1"}),
-        validate_and_normalize({"text": text_only_rep, "source": "carolina", "original_id": "r2"}),
+        validate_and_normalize(
+            {"text": text_overlap, "source": "carolina", "original_id": "r1"}
+        ),
+        validate_and_normalize(
+            {"text": text_only_rep, "source": "carolina", "original_id": "r2"}
+        ),
     ]
     docs_diag = [
-        validate_and_normalize({"text": text_overlap, "source": "carolina", "original_id": "d1"}),
-        validate_and_normalize({"text": text_only_diag, "source": "carolina", "original_id": "d2"}),
+        validate_and_normalize(
+            {"text": text_overlap, "source": "carolina", "original_id": "d1"}
+        ),
+        validate_and_normalize(
+            {"text": text_only_diag, "source": "carolina", "original_id": "d2"}
+        ),
     ]
 
     p_rep = tmp_path / "representative.parquet"
@@ -108,7 +138,9 @@ def test_no_false_cross_source_for_same_source(tmp_path: Path):
     shared = "Frase compartilhada entre dois modos do mesmo corpus Carolina."
     for fname in ("representative.parquet", "diagnostic.parquet"):
         docs = [
-            validate_and_normalize({"text": shared, "source": "carolina", "original_id": f"id_{fname[:3]}"}),
+            validate_and_normalize(
+                {"text": shared, "source": "carolina", "original_id": f"id_{fname[:3]}"}
+            ),
         ]
         save_sample_parquet(docs, tmp_path / fname)
 

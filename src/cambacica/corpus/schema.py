@@ -34,22 +34,24 @@ DOCUMENT_FIELDS: List[str] = [
     "content_sha256",
 ]
 
-PARQUET_SCHEMA = pa.schema([
-    pa.field("text", pa.string(), nullable=False),
-    pa.field("source", pa.string(), nullable=False),
-    pa.field("source_revision", pa.string(), nullable=True),
-    pa.field("subset", pa.string(), nullable=True),
-    pa.field("original_id", pa.string(), nullable=True),
-    pa.field("original_url", pa.string(), nullable=True),
-    pa.field("license", pa.string(), nullable=True),
-    pa.field("language", pa.string(), nullable=True),
-    pa.field("language_score", pa.float32(), nullable=True),
-    pa.field("variety", pa.string(), nullable=True),
-    pa.field("quality_score", pa.float32(), nullable=True),
-    pa.field("publication_date", pa.string(), nullable=True),
-    pa.field("domain_category", pa.string(), nullable=True),
-    pa.field("content_sha256", pa.string(), nullable=False),
-])
+PARQUET_SCHEMA = pa.schema(
+    [
+        pa.field("text", pa.string(), nullable=False),
+        pa.field("source", pa.string(), nullable=False),
+        pa.field("source_revision", pa.string(), nullable=True),
+        pa.field("subset", pa.string(), nullable=True),
+        pa.field("original_id", pa.string(), nullable=True),
+        pa.field("original_url", pa.string(), nullable=True),
+        pa.field("license", pa.string(), nullable=True),
+        pa.field("language", pa.string(), nullable=True),
+        pa.field("language_score", pa.float32(), nullable=True),
+        pa.field("variety", pa.string(), nullable=True),
+        pa.field("quality_score", pa.float32(), nullable=True),
+        pa.field("publication_date", pa.string(), nullable=True),
+        pa.field("domain_category", pa.string(), nullable=True),
+        pa.field("content_sha256", pa.string(), nullable=False),
+    ]
+)
 
 
 @dataclass(frozen=True)
@@ -279,7 +281,5 @@ def load_sample_parquet(input_path: Path | str) -> pa.Table:
     table_field_names = set(table.schema.names)
     for field in PARQUET_SCHEMA:
         if field.name not in table_field_names:
-            raise ValueError(
-                f"Missing required field '{field.name}' in {path.name}."
-            )
+            raise ValueError(f"Missing required field '{field.name}' in {path.name}.")
     return table

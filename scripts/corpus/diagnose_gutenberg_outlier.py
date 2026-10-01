@@ -26,11 +26,6 @@ from pathlib import Path
 import re
 import sys
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SRC_DIR = REPO_ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-
 import pyarrow.parquet as pq
 
 
@@ -72,8 +67,10 @@ def _classify_outlier(text: str, ebook_id: str) -> str:
         quarter = n // 4
         first_chunk = text[:quarter]
         # Look for the first_chunk repeated later
-        if first_chunk[:500] in text[quarter * 2:]:
-            return "duplicated_concatenation (first quarter found verbatim in second half)"
+        if first_chunk[:500] in text[quarter * 2 :]:
+            return (
+                "duplicated_concatenation (first quarter found verbatim in second half)"
+            )
 
     # Very long but no repetition or anthology markers → likely legitimate
     n_words = len(text.split())
@@ -117,9 +114,8 @@ def analyze_gutenberg_outlier(parquet_path: Path, preview_len: int = 500) -> dic
     def _cc(text: str) -> int:
         return len(text or "")
 
-    # Find max-word and max-char documents
+    # Find max-word document
     max_word_row = max(rows, key=lambda r: _wc(r.get("text") or ""))
-    max_char_row = max(rows, key=lambda r: _cc(r.get("text") or ""))
 
     # Sort all by word count for percentile context
     sorted_by_words = sorted(rows, key=lambda r: _wc(r.get("text") or ""))
@@ -129,7 +125,10 @@ def analyze_gutenberg_outlier(parquet_path: Path, preview_len: int = 500) -> dic
 
     outlier_text = max_word_row.get("text") or ""
     ebook_id = max_word_row.get("original_id") or "unknown"
-    url = max_word_row.get("original_url") or f"https://www.gutenberg.org/ebooks/{ebook_id}"
+    url = (
+        max_word_row.get("original_url")
+        or f"https://www.gutenberg.org/ebooks/{ebook_id}"
+    )
 
     classification = _classify_outlier(outlier_text, ebook_id)
 
@@ -212,9 +211,7 @@ def main() -> int:
         type=str,
         help="Path to gutenberg_pt sample Parquet file.",
     )
-    parser.add_argument(
-        "--json", action="store_true", help="Output raw JSON."
-    )
+    parser.add_argument("--json", action="store_true", help="Output raw JSON.")
     args = parser.parse_args()
 
     path = Path(args.parquet)
@@ -232,6 +229,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     import os
+
     sys.stdout.flush()
     sys.stderr.flush()
     ret = main()

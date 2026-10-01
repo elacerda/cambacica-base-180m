@@ -1,19 +1,14 @@
 """Unit tests for source samplers using local mocks and fixtures (no network required)."""
 
-from pathlib import Path
 import xml.etree.ElementTree as ET
 
-from cambacica.corpus.cli import build_parser, main
+from cambacica.corpus.cli import build_parser
 from cambacica.corpus.sources.carolina import (
     _extract_tei_document,
     _proportional_allocation,
-    _select_distributed_shards,
     TAXONOMY_POPULATION,
 )
-from cambacica.corpus.sources.gutenberg_pt import (
-    discover_gutenberg_pt_ids,
-    strip_gutenberg_boilerplate,
-)
+from cambacica.corpus.sources.gutenberg_pt import strip_gutenberg_boilerplate
 
 
 def test_extract_tei_document_mock():
@@ -80,17 +75,19 @@ def test_cli_parser_defaults():
     parser = build_parser()
 
     # sample subcommand
-    args = parser.parse_args([
-        "sample",
-        "carolina",
-        "--mode",
-        "representative",
-        "--size",
-        "500",
-        "--dry-run",
-        "--min-length",
-        "20",
-    ])
+    args = parser.parse_args(
+        [
+            "sample",
+            "carolina",
+            "--mode",
+            "representative",
+            "--size",
+            "500",
+            "--dry-run",
+            "--min-length",
+            "20",
+        ]
+    )
     assert args.subcommand == "sample"
     assert args.source == "carolina"
     assert args.mode == "representative"
@@ -196,7 +193,9 @@ def test_carolina_diagnostic_mode_all_shards(monkeypatch, tmp_path):
     def mock_iter_carolina_xml_files(fs, taxonomy):
         return fake_files.get(taxonomy, [])
 
-    def mock_stream_carolina_taxonomy(fs, taxonomy, shard_indices=None, max_files=None, byte_counter=None):
+    def mock_stream_carolina_taxonomy(
+        fs, taxonomy, shard_indices=None, max_files=None, byte_counter=None
+    ):
         files = fake_files.get(taxonomy, [])
         if shard_indices is not None:
             to_visit = [files[i] for i in shard_indices if i < len(files)]
@@ -223,13 +222,16 @@ def test_carolina_diagnostic_mode_all_shards(monkeypatch, tmp_path):
                 "domain_category": taxonomy,
             }
 
-    monkeypatch.setattr(carolina_mod, "iter_carolina_xml_files", mock_iter_carolina_xml_files)
-    monkeypatch.setattr(carolina_mod, "stream_carolina_taxonomy", mock_stream_carolina_taxonomy)
     monkeypatch.setattr(
-        carolina_mod, "resolve_hf_commit_sha", lambda *a, **k: "abc123"
+        carolina_mod, "iter_carolina_xml_files", mock_iter_carolina_xml_files
     )
+    monkeypatch.setattr(
+        carolina_mod, "stream_carolina_taxonomy", mock_stream_carolina_taxonomy
+    )
+    monkeypatch.setattr(carolina_mod, "resolve_hf_commit_sha", lambda *a, **k: "abc123")
 
     import huggingface_hub
+
     monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: object())
 
     sampler = CarolinaSampler()
@@ -265,7 +267,9 @@ def test_carolina_representative_mode_uses_distributed_shards(monkeypatch, tmp_p
     def mock_iter(fs, taxonomy):
         return fake_files.get(taxonomy, [])
 
-    def mock_stream(fs, taxonomy, shard_indices=None, max_files=None, byte_counter=None):
+    def mock_stream(
+        fs, taxonomy, shard_indices=None, max_files=None, byte_counter=None
+    ):
         files = fake_files.get(taxonomy, [])
         if shard_indices is not None:
             to_visit = shard_indices
@@ -294,11 +298,10 @@ def test_carolina_representative_mode_uses_distributed_shards(monkeypatch, tmp_p
 
     monkeypatch.setattr(carolina_mod, "iter_carolina_xml_files", mock_iter)
     monkeypatch.setattr(carolina_mod, "stream_carolina_taxonomy", mock_stream)
-    monkeypatch.setattr(
-        carolina_mod, "resolve_hf_commit_sha", lambda *a, **k: "abc123"
-    )
+    monkeypatch.setattr(carolina_mod, "resolve_hf_commit_sha", lambda *a, **k: "abc123")
 
     import huggingface_hub
+
     monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: object())
 
     sampler = CarolinaSampler()

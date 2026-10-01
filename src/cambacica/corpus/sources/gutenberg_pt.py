@@ -81,8 +81,25 @@ def discover_gutenberg_pt_ids(timeout: int = 15) -> List[int]:
         logger.warning(f"Error discovering Gutenberg IDs: {e}")
         # Return fallback canonical IDs if network fails or catalog is unreachable
         return [
-            2837, 3333, 7384, 8698, 9654, 11299, 12579, 13092, 13093, 13630,
-            14040, 14890, 15006, 16370, 16900, 17290, 17822, 18274, 18729,
+            2837,
+            3333,
+            7384,
+            8698,
+            9654,
+            11299,
+            12579,
+            13092,
+            13093,
+            13630,
+            14040,
+            14890,
+            15006,
+            16370,
+            16900,
+            17290,
+            17822,
+            18274,
+            18729,
         ]
 
 

@@ -7,10 +7,9 @@ delete data.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import asdict, dataclass
 import re
-from typing import Any, Dict, List, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 import xxhash
 
 

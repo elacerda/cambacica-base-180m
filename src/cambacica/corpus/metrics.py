@@ -13,7 +13,6 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 from cambacica.corpus.schema import DOCUMENT_FIELDS, load_sample_parquet
 
@@ -223,8 +222,7 @@ def compute_sample_metrics(table: pa.Table, file_path: str = "") -> SampleReport
     for field_name in DOCUMENT_FIELDS:
         col_vals = pydict.get(field_name, [])
         missing_c = sum(
-            1 for v in col_vals
-            if v is None or v == "" or str(v).lower() == "none"
+            1 for v in col_vals if v is None or v == "" or str(v).lower() == "none"
         )
         missing_rates[field_name] = round(missing_c / doc_count, 4)
 
@@ -268,7 +266,8 @@ def compute_sample_metrics(table: pa.Table, file_path: str = "") -> SampleReport
     )
     mean_dup_lines = (
         round(sum(duplicate_line_ratios) / len(duplicate_line_ratios), 4)
-        if duplicate_line_ratios else 0.0
+        if duplicate_line_ratios
+        else 0.0
     )
 
     return SampleReport(
@@ -332,16 +331,16 @@ def inspect_sample_file(parquet_path: Path | str) -> SampleReport:
             obtained = manifest.get("document_count", report.document_count)
             target = manifest.get("target_size", report.document_count)
             if obtained < target:
-                report.underfill_status = (
-                    f"underfilled: obtained {obtained}/{target}"
-                )
+                report.underfill_status = f"underfilled: obtained {obtained}/{target}"
             else:
                 report.underfill_status = "ok"
         stats = manifest.get("stats", {})
         if "subsets_before_exclusion" in stats or "exclusion_counts_by_subset" in stats:
             report.gigaverbo_exclusion_stats = {
-                k: v for k, v in stats.items()
-                if k in (
+                k: v
+                for k, v in stats.items()
+                if k
+                in (
                     "subsets_before_exclusion",
                     "exclusion_counts_by_subset",
                     "subsets_after_exclusion",
@@ -421,7 +420,9 @@ def format_report_text(report: SampleReport) -> str:
     n_subsets = len(subset_dist)
     # Show all subsets when cardinality is small (<=20), otherwise top 5
     show_all = n_subsets <= 20
-    items_to_show = list(subset_dist.items()) if show_all else list(subset_dist.items())[:5]
+    items_to_show = (
+        list(subset_dist.items()) if show_all else list(subset_dist.items())[:5]
+    )
     for k, v in items_to_show:
         pct = (v / report.document_count) * 100 if report.document_count else 0
         lines.append(f"  {k}: {v:,} ({pct:.1f}%)")
@@ -459,7 +460,9 @@ def format_report_text(report: SampleReport) -> str:
                 lines.append(f"    {sub}: {cnt:,}")
         subsets_before = ex.get("subsets_before_exclusion", {})
         if subsets_before:
-            lines.append(f"  Subsets encountered before exclusion: {len(subsets_before)}")
+            lines.append(
+                f"  Subsets encountered before exclusion: {len(subsets_before)}"
+            )
         subsets_after = ex.get("subsets_after_exclusion", {})
         if subsets_after:
             lines.append(f"  Subsets remaining after exclusion: {len(subsets_after)}")

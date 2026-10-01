@@ -3,11 +3,10 @@ and audit vs candidate sampling frame design."""
 
 from pathlib import Path
 
-import pytest
-
 from cambacica.corpus.sources.gigaverbo_v2 import (
     is_subset_excluded,
     load_gigaverbo_exclusions,
+    select_distributed_row_groups,
 )
 
 
@@ -84,15 +83,23 @@ def test_gigaverbo_audit_visits_all_shards(monkeypatch, tmp_path):
             def iter_batches(self, batch_size=None, columns=None):
                 # Return one batch with one valid record
                 import pyarrow as pa
-                texts = ["Este é um texto de exemplo para o GigaVerbo com comprimento adequado."]
+
+                texts = [
+                    "Este é um texto de exemplo para o GigaVerbo com comprimento adequado."
+                ]
                 ids = ["id_1"]
                 sources = ["fineweb_2_pt"]
                 subsets = ["fineweb_2_pt"]
                 scores = [3.5]
-                batch = pa.RecordBatch.from_pydict({
-                    "text": texts, "id": ids, "source": sources,
-                    "subset": subsets, "edu_score": scores,
-                })
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": texts,
+                        "id": ids,
+                        "source": sources,
+                        "subset": subsets,
+                        "edu_score": scores,
+                    }
+                )
                 return iter([batch])
 
         return _MockPF()
@@ -101,6 +108,7 @@ def test_gigaverbo_audit_visits_all_shards(monkeypatch, tmp_path):
     monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
 
     import huggingface_hub
+
     monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: MockFS())
 
     sampler = GigaVerboSampler()
@@ -146,16 +154,18 @@ def test_gigaverbo_candidate_applies_exclusions_before_sampling(monkeypatch, tmp
         class _MockPF:
             def iter_batches(self, batch_size=None, columns=None):
                 # Mix: one excluded subset, one allowed
-                batch = pa.RecordBatch.from_pydict({
-                    "text": [
-                        "Texto excluído do dataset dolly libretranslate para teste.",
-                        "Texto permitido do dataset FineWeb-2 para treino em português.",
-                    ],
-                    "id": ["excl_1", "allowed_1"],
-                    "source": ["dolly_15k_libretranslate_pt", "fineweb_2_pt"],
-                    "subset": ["dolly_15k_libretranslate_pt", "fineweb_2_pt"],
-                    "edu_score": [1.0, 3.5],
-                })
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": [
+                            "Texto excluído do dataset dolly libretranslate para teste.",
+                            "Texto permitido do dataset FineWeb-2 para treino em português.",
+                        ],
+                        "id": ["excl_1", "allowed_1"],
+                        "source": ["dolly_15k_libretranslate_pt", "fineweb_2_pt"],
+                        "subset": ["dolly_15k_libretranslate_pt", "fineweb_2_pt"],
+                        "edu_score": [1.0, 3.5],
+                    }
+                )
                 return iter([batch])
 
         return _MockPF()
@@ -164,6 +174,7 @@ def test_gigaverbo_candidate_applies_exclusions_before_sampling(monkeypatch, tmp
     monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
 
     import huggingface_hub
+
     monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: MockFS())
 
     sampler = GigaVerboSampler()
@@ -191,3 +202,177 @@ def test_gigaverbo_candidate_applies_exclusions_before_sampling(monkeypatch, tmp
     assert any("dolly" in k.lower() for k in before), (
         f"Expected dolly to appear in subsets_before_exclusion, got: {before}"
     )
+
+
+def test_select_distributed_row_groups_determinism():
+    """Verify that row-group selection is deterministic across repeated runs."""
+    res1 = select_distributed_row_groups(
+        num_row_groups=22, n_groups=4, seed=42, shard_name="shard_0"
+    )
+    res2 = select_distributed_row_groups(
+        num_row_groups=22, n_groups=4, seed=42, shard_name="shard_0"
+    )
+    assert res1 == res2
+    assert len(res1) == 4
+
+
+def test_select_distributed_row_groups_does_not_always_choose_zero():
+    """Verify that selection does not degenerate to picking row group 0."""
+    res = select_distributed_row_groups(
+        num_row_groups=22, n_groups=4, seed=42, shard_name="train-00000"
+    )
+    assert 0 not in res or any(idx >= 10 for idx in res)
+    assert res != [0, 1, 2, 3]
+
+
+def test_select_distributed_row_groups_spans_shard():
+    """Verify that selected row groups span early, middle, and late physical regions."""
+    num_rg = 30
+    n_groups = 5
+    res = select_distributed_row_groups(
+        num_row_groups=num_rg, n_groups=n_groups, seed=42, shard_name="shard_x"
+    )
+    assert len(res) == n_groups
+    assert min(res) < num_rg // 3, "Expected at least one early row group"
+    assert any((num_rg // 3) <= x < (2 * num_rg // 3) for x in res), (
+        "Expected at least one middle row group"
+    )
+    assert max(res) >= (2 * num_rg // 3), "Expected at least one late row group"
+
+
+def test_candidate_exclusions_before_reservoir_and_stats_recorded(
+    monkeypatch, tmp_path
+):
+    """Verify exclusions happen before reservoir insertion and stats are recorded."""
+    from cambacica.corpus.sources import gigaverbo_v2 as gv_mod
+    from cambacica.corpus.sources.gigaverbo_v2 import GigaVerboSampler
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    class MockFS:
+        def ls(self, path, detail=False):
+            return [f"{path}/shard-00000-of-00056.parquet"]
+
+        def open(self, path, mode="rb"):
+            return MockParquetCtx(path)
+
+    class MockParquetCtx:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_parquet_file(f):
+        class _MockPF:
+            num_row_groups = 2
+
+            def iter_batches(self, batch_size=None, row_groups=None, columns=None):
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": [
+                            "Texto em português do dataset bactrianx que deve ser excluído pelo filtro.",
+                            "Texto em português do FineWeb-2 que deve ser aceito normalmente no treino.",
+                        ],
+                        "id": ["bactrian_1", "fw2_1"],
+                        "source": ["bactrianx", "fineweb_2_pt"],
+                        "subset": ["bactrianx", "fineweb_2_pt"],
+                        "edu_score": [1.0, 4.0],
+                    }
+                )
+                return iter([batch])
+
+        return _MockPF()
+
+    monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
+    monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
+
+    sampler = GigaVerboSampler()
+    p_path, manifest = sampler.sample(
+        mode="candidate",
+        size=10,
+        seed=42,
+        output_dir=tmp_path / "gv_cand_test",
+        row_groups_per_shard=2,
+    )
+
+    tbl = pq.read_table(p_path)
+    subsets_in_sample = set(tbl["subset"].to_pylist())
+    assert "bactrianx" not in subsets_in_sample
+    assert "fineweb_2_pt" in subsets_in_sample
+
+    stats = manifest.stats
+    assert stats["total_excluded"] >= 1
+    assert "bactrianx" in stats["exclusion_counts_by_subset"]
+    assert "bactrianx" in stats["exclusion_rules_matched"]
+    assert "fineweb_2_pt" in stats["subsets_after_exclusion"]
+
+
+def test_audit_mode_does_not_apply_exclusions(monkeypatch, tmp_path):
+    """Verify that audit mode accepts all subsets without applying exclusions."""
+    from cambacica.corpus.sources import gigaverbo_v2 as gv_mod
+    from cambacica.corpus.sources.gigaverbo_v2 import GigaVerboSampler
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    class MockFS:
+        def ls(self, path, detail=False):
+            return [f"{path}/shard-00000-of-00056.parquet"]
+
+        def open(self, path, mode="rb"):
+            return MockParquetCtx(path)
+
+    class MockParquetCtx:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_parquet_file(f):
+        class _MockPF:
+            num_row_groups = 2
+
+            def iter_batches(self, batch_size=None, row_groups=None, columns=None):
+                rg = row_groups[0] if row_groups else 0
+                batch = pa.RecordBatch.from_pydict(
+                    {
+                        "text": [
+                            f"Texto em português do dataset bactrianx que em audit NÃO deve ser excluído rg {rg}.",
+                            f"Texto em português do FineWeb-2 que deve ser aceito normalmente no teste rg {rg}.",
+                        ],
+                        "id": [f"bactrian_{rg}", f"fw2_{rg}"],
+                        "source": ["bactrianx", "fineweb_2_pt"],
+                        "subset": ["bactrianx", "fineweb_2_pt"],
+                        "edu_score": [1.0, 4.0],
+                    }
+                )
+                return iter([batch])
+
+        return _MockPF()
+
+    monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
+    monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
+
+    sampler = GigaVerboSampler()
+    p_path, manifest = sampler.sample(
+        mode="audit",
+        size=10,
+        seed=42,
+        output_dir=tmp_path / "gv_audit_test",
+        row_groups_per_shard=2,
+    )
+
+    tbl = pq.read_table(p_path)
+    subsets_in_sample = set(tbl["subset"].to_pylist())
+    assert "bactrianx" in subsets_in_sample
+    assert "fineweb_2_pt" in subsets_in_sample
+    assert manifest.stats.get("total_excluded", 0) == 0

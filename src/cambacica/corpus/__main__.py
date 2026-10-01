@@ -5,6 +5,7 @@ from cambacica.corpus.cli import main
 
 if __name__ == "__main__":
     import os
+
     sys.stdout.flush()
     sys.stderr.flush()
     ret = main()

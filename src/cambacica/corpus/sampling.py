@@ -8,8 +8,7 @@ physical row order or partition boundaries.
 from __future__ import annotations
 
 import heapq
-import struct
-from typing import Any, Dict, Hashable, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Tuple
 import xxhash
 
 
@@ -209,9 +208,7 @@ class StratifiedSampler:
         bool
             True if every configured stratum has reached its capacity.
         """
-        return all(
-            len(res) >= res.capacity for res in self._reservoirs.values()
-        )
+        return all(len(res) >= res.capacity for res in self._reservoirs.values())
 
     def get_sample_by_category(self) -> Dict[str, List[Any]]:
         """Retrieve samples grouped by category.

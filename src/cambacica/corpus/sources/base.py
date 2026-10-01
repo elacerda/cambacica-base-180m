@@ -39,6 +39,7 @@ def ensure_user_hf_cache() -> None:
 
     try:
         import datasets.config
+
         datasets.config.HF_DATASETS_CACHE = user_datasets
     except Exception:
         pass
