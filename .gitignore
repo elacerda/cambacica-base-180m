@@ -29,9 +29,9 @@ tensorboard/
 outputs/
 
 # Large datasets / generated corpora
-data/
-datasets/
-corpus/
+/data/
+/datasets/
+/corpus/
 *.jsonl
 *.jsonl.gz
 *.parquet
