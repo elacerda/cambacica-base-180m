@@ -418,7 +418,150 @@ def handle_validate_mixes(args: argparse.Namespace) -> int:
         return 1
     except Exception as err:
         print(f"[ERROR] Unexpected error during mix validation: {err}", file=sys.stderr)
+
+
+def handle_materialize(args: argparse.Namespace) -> int:
+    """Handle the 'materialize' subcommand.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments.
+
+    Returns
+    -------
+    int
+        Exit code (0 for success, 1 for failure).
+    """
+    import time
+    from cambacica.corpus.manifest import compute_file_sha256
+    from cambacica.corpus.materialize import get_materializer
+
+    source_name = args.source.lower().replace("-", "_")
+
+    try:
+        materializer = get_materializer(
+            source=source_name,
+            config_path=args.config,
+            destination=args.destination,
+            allow_custom_destination=args.allow_custom_destination,
+        )
+    except Exception as err:
+        print(f"[ERROR] Failed to initialize materializer: {err}", file=sys.stderr)
         return 1
+
+    # Dry-run mode
+    if args.dry_run:
+        plan = materializer.plan()
+        print("\n=== DRY RUN / MATERIALIZATION PLAN REVIEW ===")
+        print(f"Source:                {plan.get('source')}")
+        print(f"Canonical Name:        {plan.get('canonical_name')}")
+        print(f"Upstream Repository:   {plan.get('repository')}")
+        print(f"Pinned Revision:       {plan.get('pinned_revision')}")
+        print(
+            f"Commit SHA / Snapshot: {plan.get('pinned_commit_sha') or plan.get('snapshot_date') or 'N/A'}"
+        )
+        print(
+            f"Acquisition Mode:      {plan.get('acquisition_mode', 'full_catalog_snapshot')}"
+        )
+        print(f"Target Destination:    {plan.get('destination')}")
+        print(f"Estimated Raw Size:    {plan.get('estimated_raw_size')}")
+        if "expected_catalog_size" in plan:
+            print(
+                f"Expected Catalog Size: {plan.get('expected_catalog_size'):,} eBooks"
+            )
+        if "existing_text_files" in plan:
+            print(f"Existing Text Files:   {plan.get('existing_text_files'):,}")
+        if "checksum_provenance_requirements" in plan:
+            print(
+                f"Provenance Reqs:       {plan.get('checksum_provenance_requirements')}"
+            )
+        print("==============================================\n")
+        print(
+            "[DRY-RUN] No downloads performed. Safety boundaries and revisions verified."
+        )
+        return 0
+
+    # Verify-only mode
+    if args.verify_only:
+        print(
+            f"--> Verifying materialized source '{source_name}' at {materializer.destination}..."
+        )
+        is_valid, errors = materializer.verify()
+        manifest_file = materializer.destination / "manifest.json"
+        if is_valid and manifest_file.is_file():
+            from cambacica.corpus.materialize import MaterializationManifest
+
+            manifest = MaterializationManifest.load(manifest_file)
+            manifest_sha = compute_file_sha256(manifest_file)
+            print(
+                f"\n[PASS] Materialization verification succeeded for '{source_name}'."
+            )
+            print(f"       Status:            {manifest.status}")
+            print(f"       Total Files:       {manifest.total_files:,}")
+            print(
+                f"       Total Bytes:       {manifest.total_bytes:,} ({manifest.total_bytes / (1024 * 1024):.2f} MB)"
+            )
+            print(f"       Manifest SHA-256:  {manifest_sha}")
+            print(
+                "       All payload files exist, byte counts match, and SHA-256 verified."
+            )
+            print("       Zero orphaned .partial files detected.")
+            return 0
+        else:
+            print(
+                f"\n[FAIL] Materialization verification failed for '{source_name}':",
+                file=sys.stderr,
+            )
+            for err in errors:
+                print(f"       - {err}", file=sys.stderr)
+            return 1
+
+    # Live Materialization
+    print(f"--> Materializing source '{source_name}'...")
+    print(f"    Config:          {args.config}")
+    print(f"    Destination:     {materializer.destination}")
+    print(f"    Concurrency:     {args.concurrency}")
+    print(f"    Timeout:         {args.timeout}s")
+    print(f"    Max Retries:     {args.retries}")
+
+    t0 = time.time()
+    try:
+        manifest = materializer.materialize(
+            concurrency=args.concurrency,
+            timeout=args.timeout,
+            max_retries=args.retries,
+        )
+    except NotImplementedError as nie:
+        print(f"[ERROR] {nie}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"[ERROR] Materialization aborted with exception: {e}", file=sys.stderr)
+        return 1
+
+    elapsed = time.time() - t0
+    manifest_file = materializer.destination / "manifest.json"
+    manifest_sha = (
+        compute_file_sha256(manifest_file) if manifest_file.is_file() else "N/A"
+    )
+
+    print("\n" + "=" * 60)
+    print(f"MATERIALIZATION RESULT: {manifest.status}")
+    print("=" * 60)
+    print(f"Source:                {manifest.source}")
+    print(f"Status:                {manifest.status}")
+    print(f"Total Files:           {manifest.total_files:,}")
+    print(
+        f"Total Bytes:           {manifest.total_bytes:,} ({manifest.total_bytes / (1024 * 1024):.2f} MB)"
+    )
+    print(f"Elapsed Time:          {elapsed:.2f}s")
+    print(f"Manifest Path:         {manifest_file}")
+    print(f"Manifest SHA-256:      {manifest_sha}")
+    if manifest.failed_ids:
+        print(f"Failed Items Count:    {len(manifest.failed_ids)}")
+        print(f"Failed IDs:            {manifest.failed_ids}")
+
+    return 0 if manifest.status == "COMPLETE" else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -557,6 +700,72 @@ def build_parser() -> argparse.ArgumentParser:
         help="Paths to mix YAML config files to validate (default: configs/corpus_mix_[a,b,c].yaml).",
     )
 
+    # Subcommand: materialize
+    mat_parser = subparsers.add_parser(
+        "materialize",
+        help="Materialize raw source corpus data reproducibly.",
+    )
+    mat_parser.add_argument(
+        "source",
+        choices=[
+            "gutenberg",
+            "gutenberg_pt",
+            "carolina",
+            "wikipedia_pt",
+            "wikipedia",
+            "parlamento_pt",
+            "parlamento",
+            "gigaverbo_v2",
+            "gigaverbo",
+        ],
+        help="Source identifier to materialize.",
+    )
+    mat_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Output materialization plan and safety parameters without downloading.",
+    )
+    mat_parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Verify previously materialized payload files and manifest integrity without downloading.",
+    )
+    mat_parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/corpus_materialization.yaml",
+        help="Path to corpus_materialization.yaml.",
+    )
+    mat_parser.add_argument(
+        "--destination",
+        type=str,
+        default=None,
+        help="Destination directory override.",
+    )
+    mat_parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=4,
+        help="Worker threads for downloads (default: 4).",
+    )
+    mat_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=25,
+        help="HTTP request timeout in seconds (default: 25).",
+    )
+    mat_parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Max retries per item (default: 3).",
+    )
+    mat_parser.add_argument(
+        "--allow-custom-destination",
+        action="store_true",
+        help="Allow custom destination path outside /mnt/data for testing.",
+    )
+
     return parser
 
 
@@ -584,6 +793,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_compare(args)
     elif args.subcommand == "validate-mixes":
         return handle_validate_mixes(args)
+    elif args.subcommand == "materialize":
+        return handle_materialize(args)
     return 1
 
 

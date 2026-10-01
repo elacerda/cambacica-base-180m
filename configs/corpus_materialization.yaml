@@ -33,8 +33,10 @@ sources:
     estimated_raw_size: "8.3 GB"
     estimated_normalized_size: "12-16 GB"
     checksum_provenance_requirements: >
-      Git commit SHA-256 verification and per-shard payload integrity checks against
-      upstream HuggingFace repository commit.
+      Upstream revision identifier: pinned Git commit SHA (55e63a519393c70a48dcfa14a558499c6bb0583b).
+      Payload integrity: locally computed SHA-256 checksum for every materialized XML.GZ
+      shard payload; upstream HuggingFace repository does not provide standalone per-shard
+      SHA-256 manifests.
 
   wikipedia_pt:
     canonical_name: "wikipedia_pt"
@@ -49,7 +51,10 @@ sources:
     estimated_raw_size: "2.5 GB"
     estimated_normalized_size: "7-9 GB"
     checksum_provenance_requirements: >
-      Official Wikimedia dump hash and HuggingFace commit SHA-256 verification.
+      Upstream revision identifier: pinned HuggingFace repository commit SHA (b04c8d1ceb2f5cd4588862100d08de323dccfbaa)
+      and Wikimedia snapshot identifier (20231101.pt).
+      Payload integrity: locally computed SHA-256 checksum of every materialized payload;
+      verify upstream-provided Wikimedia dump checksums when available.
 
   parlamento_pt:
     canonical_name: "parlamento_pt"
@@ -63,7 +68,9 @@ sources:
     estimated_raw_size: "2.7 GB"
     estimated_normalized_size: "3-4 GB"
     checksum_provenance_requirements: >
-      Git commit SHA-256 verification and raw text line/byte count verification.
+      Upstream revision identifier: pinned Git commit SHA (08f13e7e63ab9bfbd8c0b40955defe3bb7f68c2b).
+      Payload integrity: locally computed SHA-256 checksum of materialized raw text payload (train.txt)
+      and upstream line/byte count verification.
 
   gutenberg_pt:
     canonical_name: "gutenberg_pt"
@@ -72,6 +79,7 @@ sources:
     snapshot_date: "2026-10-01"
     catalog_query: "browse/languages/pt"
     catalog_size_ebooks: 655
+    snapshot_config: "configs/gutenberg_pt_snapshot_20261001.json"
     acquisition_mode: "full_catalog_snapshot"
     description: >
       Batch acquisition of 655 Portuguese-language plain-text eBooks listed in the
@@ -80,8 +88,11 @@ sources:
     estimated_raw_size: "0.4 GB"
     estimated_normalized_size: "0.5 GB"
     checksum_provenance_requirements: >
-      Deterministic list of 655 validated eBook IDs, raw text checksums, and standard
-      header/footer boilerplate stripping verification.
+      Upstream revision identifier: catalog query snapshot date 2026-10-01 (655 eligible eBooks);
+      upstream does not provide a Git repository or payload checksum manifests.
+      Payload integrity: locally computed SHA-256 checksum and byte count for every materialized
+      raw text eBook payload; raw materialization preserves unmodified text including boilerplate
+      (boilerplate stripping is deferred to subsequent normalization).
     provenance_note: >
       Project acquisition snapshot based on Portuguese language catalog query as of
       2026-10-01 (655 eligible eBooks); project acquisition snapshot, not an immutable
@@ -105,5 +116,6 @@ sources:
     estimated_raw_size: "25-35 GB"
     estimated_normalized_size: "20-30 GB"
     checksum_provenance_requirements: >
-      Pinned HuggingFace commit SHA-256, Parquet shard checksums, and deterministic
-      exclusion filter verification via configs/gigaverbo_exclusions.yaml.
+      Upstream revision identifier: pinned HuggingFace commit SHA (7058ccf19eaeaf4505a96fc7e5305a01fc441fd8).
+      Payload integrity: locally computed SHA-256 checksum of each materialized filtered Parquet
+      shard/buffer, and deterministic exclusion filter verification tracked via exclusions config hash.
