@@ -1129,3 +1129,35 @@ def test_carolina_pinned_commit_url(tmp_path, monkeypatch):
     mat.materialize()
 
     assert all("55e63a519393c70a48dcfa14a558499c6bb0583b" in u for u in urls)
+
+
+def test_carolina_list_files_filters_non_target_artifacts(tmp_path, monkeypatch):
+    """Verify that _list_files discards stray/temp artifacts (e.g. .goutputstream)."""
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    fake_tree_response = [
+        {"type": "file", "path": "corpus/wikis/pt/WIK01.xml.gz"},
+        {"type": "file", "path": "corpus/wikis/pt/checksum.sha256"},
+        {"type": "file", "path": "corpus/wikis/pt/.goutputstream-AQRB22"},
+        {"type": "file", "path": "corpus/wikis/pt/README.txt"},
+    ]
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return fake_tree_response
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+    files = mat._list_files("corpus/wikis/pt")
+
+    assert "corpus/wikis/pt/WIK01.xml.gz" in files
+    assert "corpus/wikis/pt/checksum.sha256" in files
+    assert "corpus/wikis/pt/.goutputstream-AQRB22" not in files
+    assert "corpus/wikis/pt/README.txt" not in files
+    assert len(files) == 2

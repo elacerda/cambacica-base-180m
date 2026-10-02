@@ -1846,7 +1846,23 @@ class CarolinaMaterializer(BaseMaterializer):
             ),
         }
 
-    def _list_files(self, path):
+    def _list_files(self, path: str) -> List[str]:
+        """Recursively list target payload and checksum files under a path.
+
+        Filters out non-target, hidden, or temporary artifacts such as
+        upstream OS garbage (.goutputstream-*).
+
+        Parameters
+        ----------
+        path : str
+            Subdirectory path under the repository root.
+
+        Returns
+        -------
+        list of str
+            List of repository-relative file paths ending in '.xml.gz' or
+            'checksum.sha256'.
+        """
         import requests
 
         url = f"{self.api_base}/{self.pinned_commit}/{path}"
@@ -1857,7 +1873,9 @@ class CarolinaMaterializer(BaseMaterializer):
             if item["type"] == "directory":
                 files.extend(self._list_files(item["path"]))
             elif item["type"] == "file":
-                files.append(item["path"])
+                p = item["path"]
+                if p.endswith(".xml.gz") or p.endswith("checksum.sha256"):
+                    files.append(p)
         return files
 
     def materialize(self, concurrency=4, timeout=25, max_retries=3, **kwargs):
