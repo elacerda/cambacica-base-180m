@@ -46,7 +46,12 @@ Progresso atual:
 - análise científica de composição, caracterização das 5 famílias e propostas A/B/C concluídas (`docs/C1_COMPOSITION_ANALYSIS.md`);
 - especificações de misturas candidatas A/B/C versionadas como hipóteses experimentais provisórias (`configs/corpus_mix_*.yaml`);
 - plano de materialização seletiva em storage `/mnt/data` documentado (`configs/corpus_materialization.yaml`);
-- próximo passo: materialização seletiva e construção dos pools de fontes candidatas normalizadas.
+- materialização bruta das fontes curadas concluída e verificada:
+  - Gutenberg raw materialization: COMPLETE
+  - ParlamentoPT raw materialization: COMPLETE
+  - Wikipedia PT raw materialization: COMPLETE
+  - Carolina raw materialization: COMPLETE
+- próximo passo: GigaVerbo residual materialization: NEXT.
 
 Próximos critérios de C1:
 
