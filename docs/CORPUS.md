@@ -339,6 +339,12 @@ tokenização / formato de treinamento
 A ordem poderá ser refinada se houver uma justificativa científica explícita,
 mas duplicatas não devem poder atravessar os splits.
 
+A normalização bruta do Gate C1 está congelada em
+[`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0. Ela mantém
+os documentos inteiros e mede `normalized_words` pela regra de whitespace já
+usada nas amostras C1; não inicia deduplicação, decontaminação, splits ou
+tokenização.
+
 ## 10. Identificação de idioma
 
 A política inicial é:

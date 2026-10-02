@@ -26,6 +26,18 @@ O Cambacica possui identidade e restrições técnicas fixadas no Gate C0:
 Em consonância com [`docs/CORPUS.md`](CORPUS.md) e [`docs/C1_CORPUS_COMPOSITION_STUDY.md`](C1_CORPUS_COMPOSITION_STUDY.md), **a composição não começa a partir de uma meta abstrata de contagem de tokens**. A primeira pergunta científica que este estudo responde é:
 > *"O que o corpus do Cambacica deve conter e qual papel cada fonte deve desempenhar para um modelo causal de 180M parâmetros?"*
 
+#### Semântica dos números de palavras das amostras C1
+
+As palavras das sete amostras persistentes foram contadas como
+`len(text.split())` depois da normalização NFC e remoção de whitespace nas
+bordas feita por `validate_and_normalize()` em `src/cambacica/corpus/schema.py`.
+O novo campo de contagem `normalized_words` conserva exatamente essa regra de
+separação por whitespace; não é uma estimativa de tokens do modelo. A extração
+de cada fonte continua específica. Em particular, a extração de produção do
+Carolina inclui texto descendente de marcação TEI inline, que o extrator antigo
+baseado em `p.text` podia omitir, então os totais completos substituem qualquer
+extrapolação da amostra para essa fonte.
+
 ### 1.2 Medição Real do Armazenamento no Sistema
 A infraestrutura de armazenamento local sob `/mnt/data` foi aferida diretamente via comandos de sistema operacional em 2026-10-01:
 

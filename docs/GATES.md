@@ -58,6 +58,13 @@ Progresso atual:
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
 - próxima atividade: normalização e caracterização das fontes brutas (raw-source normalization and characterization).
 
+### Normalização e caracterização brutas do C1
+
+- contrato versionado: [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0;
+- implementação e fixtures foram validados; a normalização de produção continua pendente;
+- a normalização completa e a caracterização dos volumes reais ainda estão pendentes;
+- o Gate C1 continua **IN PROGRESS**; C2 não começou.
+
 Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;

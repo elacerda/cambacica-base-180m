@@ -1,7 +1,7 @@
 """ParlamentoPT sampler for Gate C1.
 
-Streams European Portuguese parliamentary debate records from PORTULAN/parlamento-pt
-without downloading the full 2.7 GB text archive.
+Streams newline-delimited Portuguese parliamentary text records from
+PORTULAN/parlamento-pt without downloading the full 2.7 GB text archive.
 """
 
 from __future__ import annotations
@@ -28,10 +28,10 @@ PARLAMENTO_URL = (
 
 
 class ParlamentoPTSampler(BaseSourceSampler):
-    """Sampler for European Portuguese parliamentary debates (PORTULAN/parlamento-pt).
+    """Sampler for Portuguese parliamentary text records (PORTULAN/parlamento-pt).
 
     Supports:
-    - 'representative': Collects debate documents in native European Portuguese
+    - 'representative': Samples source text records in native European Portuguese
       (PT-PT) using deterministic reservoir sampling over a bounded stream prefix.
     """
 
@@ -55,7 +55,7 @@ class ParlamentoPTSampler(BaseSourceSampler):
         mode : str, default 'representative'
             Sampling mode.
         size : int, default 10000
-            Target number of debate documents.
+            Target number of newline-delimited source records.
         min_length : int, default 0
             Minimum character filter length (disabled by default).
         max_stream_lines : int or None, optional
@@ -80,8 +80,9 @@ class ParlamentoPTSampler(BaseSourceSampler):
             "upstream_revision": self.revision,
             "upstream_commit_sha": commit_sha,
             "population_scope": (
-                "~11.5M debate interventions in PORTULAN/parlamento-pt "
-                "(train.txt, ~2.7 GB uncompressed)"
+                "newline-delimited text records in PORTULAN/parlamento-pt train.txt; "
+                "the accepted pinned raw manifest records 2,670,846 LF delimiters "
+                "and does not establish speaker-turn boundaries"
             ),
             "sampling_frame": (
                 f"bounded_stream_prefix (first {max_stream_lines:,} lines of train.txt)"
@@ -112,7 +113,7 @@ class ParlamentoPTSampler(BaseSourceSampler):
         mode : str, default 'representative'
             Sampling mode.
         size : int, default 10000
-            Target number of debate documents.
+            Target number of text records.
         seed : int, default 42
             Deterministic seed.
         output_dir : Path or str or None, optional
@@ -121,7 +122,7 @@ class ParlamentoPTSampler(BaseSourceSampler):
             Safety limit on stream lines read.
         min_length : int, default 0
             Optional minimum character length filter (disabled by default).
-            When 0, all non-empty valid parliamentary utterances are kept.
+            When 0, all non-empty valid source records are kept.
         **kwargs : any
             Additional arguments.
 
@@ -203,8 +204,9 @@ class ParlamentoPTSampler(BaseSourceSampler):
             upstream_url=f"https://huggingface.co/datasets/{self.canonical_id}",
             upstream_configuration="main",
             population_scope=(
-                "~11.5M debate interventions in PORTULAN/parlamento-pt "
-                "(train.txt, ~2.7 GB uncompressed)"
+                "newline-delimited text records in PORTULAN/parlamento-pt train.txt; "
+                "the accepted pinned raw manifest records 2,670,846 LF delimiters "
+                "and does not establish speaker-turn boundaries"
             ),
             sampling_frame=(
                 f"bounded_stream_prefix (first {max_stream_lines:,} lines of train.txt)"

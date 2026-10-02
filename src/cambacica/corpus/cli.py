@@ -1,7 +1,8 @@
 """Command-line interface for Cambacica corpus sampling and inspection.
 
 Provides commands to sample candidate sources deterministically, inspect sample
-diagnostics, and evaluate cross-source duplicate overlaps for Gate C1.
+diagnostics, evaluate cross-source duplicate overlaps, normalize frozen Gate C1
+source pools, and characterize normalized word volumes.
 """
 
 from __future__ import annotations
@@ -420,6 +421,122 @@ def handle_validate_mixes(args: argparse.Namespace) -> int:
         print(f"[ERROR] Unexpected error during mix validation: {err}", file=sys.stderr)
 
 
+def _require_clean_normalization_commit() -> None:
+    """Refuse production normalization until its implementation is committed."""
+    import subprocess
+    from pathlib import Path
+
+    repository_root = Path(__file__).resolve().parents[3]
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if status.returncode != 0 or status.stdout.strip():
+        raise RuntimeError(
+            "Production normalization requires a clean worktree so its tool commit is frozen."
+        )
+
+
+def handle_normalize(args: argparse.Namespace) -> int:
+    """Normalize one pinned raw source or verify a completed normalized pool."""
+    from cambacica.corpus.normalization import (
+        normalize_source,
+        verify_normalized_source,
+    )
+
+    try:
+        if args.verify_only:
+            valid, errors = verify_normalized_source(
+                args.source,
+                output_root=args.output_root,
+                raw_root=args.raw_root,
+            )
+            if valid:
+                print(f"[PASS] Normalized source verified: {args.source}")
+                return 0
+            for error in errors:
+                print(f"[FAIL] {error}", file=sys.stderr)
+            return 1
+        _require_clean_normalization_commit()
+        manifest = normalize_source(
+            args.source,
+            raw_root=args.raw_root,
+            output_root=args.output_root,
+            shard_text_bytes=args.shard_text_bytes,
+            resume=args.resume,
+        )
+        print(
+            json.dumps(
+                {
+                    "source": manifest["source"],
+                    "status": manifest["status"],
+                    "source_document_count": manifest["source_document_count"],
+                    "output_document_count": manifest["output_document_count"],
+                    "normalized_files": len(manifest["normalized_files"]),
+                    "normalized_bytes": manifest["total_normalized_bytes"],
+                    "normalized_characters": manifest["total_normalized_characters"],
+                    "normalized_words": manifest["total_normalized_words"],
+                    "failures": manifest["normalization_failure_count"],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
+        )
+        return 0 if manifest["status"] == "COMPLETE" else 1
+    except Exception as exc:
+        print(f"[ERROR] Normalization failed: {exc}", file=sys.stderr)
+        return 1
+
+
+def handle_characterize(args: argparse.Namespace) -> int:
+    """Characterize normalized source pools and candidate capacities."""
+    from cambacica.corpus.characterize import characterize_sources
+
+    try:
+        summary = characterize_sources(
+            normalized_root=args.normalized_root,
+            target_words=args.target_words,
+        )
+        print(
+            json.dumps(
+                {
+                    "normalized_root": str(args.normalized_root),
+                    "characterization_dir": str(
+                        args.normalized_root / "characterization"
+                    ),
+                    "total_normalized_words": summary["total_normalized_words"],
+                    "target_normalized_words": summary["target_normalized_words"],
+                    "candidate_mixes": {
+                        name: {
+                            "max_non_oversampled_total_normalized_words": report[
+                                "max_non_oversampled_total_normalized_words"
+                            ],
+                            "limiting_component": report["limiting_component"],
+                            "source_pool_status": report["source_pool_status"],
+                            "feasibility_status": report["feasibility_status"],
+                            "oversampling_required_at_target": report[
+                                "oversampling_required_at_target"
+                            ],
+                        }
+                        for name, report in summary["candidate_mix_feasibility"].items()
+                    },
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
+        )
+        return 0
+    except Exception as exc:
+        print(f"[ERROR] Characterization failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def handle_materialize(args: argparse.Namespace) -> int:
     """Handle the 'materialize' subcommand.
 
@@ -711,6 +828,70 @@ def build_parser() -> argparse.ArgumentParser:
         help="Paths to mix YAML config files to validate (default: configs/corpus_mix_[a,b,c].yaml).",
     )
 
+    # Subcommand: normalize
+    normalize_parser = subparsers.add_parser(
+        "normalize",
+        help="Normalize one complete Gate C1 raw source into versioned Parquet.",
+    )
+    normalize_parser.add_argument(
+        "source",
+        choices=[
+            "gutenberg_pt",
+            "parlamento_pt",
+            "wikipedia_pt",
+            "carolina",
+            "gigaverbo_v2",
+        ],
+        help="Pinned raw source family to normalize.",
+    )
+    normalize_parser.add_argument(
+        "--raw-root",
+        type=Path,
+        default=Path("/mnt/data/cambacica-base-180m/raw"),
+        help="Root containing the five verified raw source directories.",
+    )
+    normalize_parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path("/mnt/data/cambacica-base-180m/normalized"),
+        help="Normalized source output root.",
+    )
+    normalize_parser.add_argument(
+        "--shard-text-bytes",
+        type=int,
+        default=256 * 1024 * 1024,
+        help="Target normalized UTF-8 text bytes per Parquet shard (default: 256 MiB).",
+    )
+    normalize_parser.add_argument(
+        "--resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Resume an interrupted run only when all frozen inputs/options match.",
+    )
+    normalize_parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Verify a completed normalized source without processing raw payloads.",
+    )
+
+    # Subcommand: characterize
+    characterize_parser = subparsers.add_parser(
+        "characterize",
+        help="Characterize all completed normalized source pools and candidate capacities.",
+    )
+    characterize_parser.add_argument(
+        "--normalized-root",
+        type=Path,
+        default=Path("/mnt/data/cambacica-base-180m/normalized"),
+        help="Root containing the five normalized source directories.",
+    )
+    characterize_parser.add_argument(
+        "--target-words",
+        type=int,
+        default=None,
+        help="Optional candidate corpus size for explicit no-oversampling feasibility checks.",
+    )
+
     # Subcommand: materialize
     mat_parser = subparsers.add_parser(
         "materialize",
@@ -804,6 +985,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_compare(args)
     elif args.subcommand == "validate-mixes":
         return handle_validate_mixes(args)
+    elif args.subcommand == "normalize":
+        return handle_normalize(args)
+    elif args.subcommand == "characterize":
+        return handle_characterize(args)
     elif args.subcommand == "materialize":
         return handle_materialize(args)
     return 1
