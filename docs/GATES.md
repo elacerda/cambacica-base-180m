@@ -46,12 +46,17 @@ Progresso atual:
 - análise científica de composição, caracterização das 5 famílias e propostas A/B/C concluídas (`docs/C1_COMPOSITION_ANALYSIS.md`);
 - especificações de misturas candidatas A/B/C versionadas como hipóteses experimentais provisórias (`configs/corpus_mix_*.yaml`);
 - plano de materialização seletiva em storage `/mnt/data` documentado (`configs/corpus_materialization.yaml`);
-- materialização bruta das fontes curadas concluída e verificada:
+- materialização bruta das fontes concluída e verificada:
   - Gutenberg raw materialization: COMPLETE
   - ParlamentoPT raw materialization: COMPLETE
   - Wikipedia PT raw materialization: COMPLETE
   - Carolina raw materialization: COMPLETE
-- próximo passo: GigaVerbo residual materialization: NEXT.
+  - GigaVerbo residual raw materialization: COMPLETE
+    - measured persisted size: 41,543,747,437 bytes
+    - 15,756,679 eligible/persisted records
+    - 2,260 Parquet payload files
+    - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
+- próxima atividade: normalização e caracterização das fontes brutas (raw-source normalization and characterization).
 
 Próximos critérios de C1:
 
