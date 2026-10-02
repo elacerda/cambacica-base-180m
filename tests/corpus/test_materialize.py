@@ -15,6 +15,7 @@ import pytest
 
 from cambacica.corpus.cli import main
 from cambacica.corpus.manifest import compute_file_sha256
+
 from cambacica.corpus.materialize import (
     BaseMaterializer,
     GenericStubMaterializer,
@@ -23,6 +24,9 @@ from cambacica.corpus.materialize import (
     MaterializedFileRecord,
     _atomic_write_json,
     _get_clean_tool_git_commit,
+    ParlamentoMaterializer,
+    WikipediaMaterializer,
+    CarolinaMaterializer,
 )
 
 
@@ -632,3 +636,496 @@ def test_cli_materialize_commands(tmp_path: Path):
         ]
     )
     assert ret == 1
+
+
+def test_parlamento_materializer_plan(tmp_path):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+    plan = mat.plan()
+    assert plan["source"] == "parlamento_pt"
+    assert "artifact_url" in plan
+
+
+def test_parlamento_materializer_dry_run(tmp_path):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+    plan = mat.plan()
+    assert "08f13e7e63ab9bfbd8c0b40955defe3bb7f68c2b" in plan["artifact_url"]
+    assert plan["pinned_commit_sha"] == "08f13e7e63ab9bfbd8c0b40955defe3bb7f68c2b"
+
+
+def test_parlamento_materializer_mocked(tmp_path, monkeypatch):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def __init__(self):
+            self.status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"line1\nline2\n"
+
+    def mock_get(*args, **kwargs):
+        url = args[1] if len(args) > 1 else kwargs.get("url", "")
+        assert "08f13e7e63ab9bfbd8c0b40955defe3bb7f68c2b" in url
+        return MockResp()
+
+    monkeypatch.setattr("requests.Session.get", mock_get)
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    manifest = mat.materialize(max_retries=1)
+    assert manifest.status == "COMPLETE"
+    assert manifest.line_count == 2
+    assert manifest.upstream_blob_oid == "d01100ee7525d918539d8a2c2cea2836c7948191"
+
+
+def test_parlamento_corruption_rejected(tmp_path, monkeypatch):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data\n"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    mat.materialize()
+
+    # Corrupt
+    (tmp_path / "parlamento" / "train.txt").write_text("bad data")
+
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        mat.materialize()
+
+
+def test_parlamento_trusted_manifest_reuse(tmp_path, monkeypatch):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data\n"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    mat.materialize()
+
+    # Second run
+    monkeypatch.setattr(
+        "requests.Session.get", lambda *a, **k: 1 / 0
+    )  # Should not be called
+    mat.materialize()
+
+
+def test_parlamento_verify_only(tmp_path, monkeypatch):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data\n"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    mat.materialize()
+    assert mat.verify()[0]
+
+
+def test_parlamento_verify_only_on_empty(tmp_path):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+    assert mat.verify()[0] is False
+
+
+def test_parlamento_incomplete_download_recovers(tmp_path, monkeypatch):
+    mat = ParlamentoMaterializer(
+        destination_override=tmp_path / "parlamento", allow_custom_destination=True
+    )
+
+    calls = 0
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise Exception("Network Error")
+            yield b"data\n"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    monkeypatch.setattr("time.sleep", lambda x: None)
+
+    mat.materialize()
+    assert (tmp_path / "parlamento" / "train.txt").exists()
+
+
+# WIKIPEDIA
+def test_wikipedia_materializer_plan(tmp_path):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+    plan = mat.plan()
+    assert plan["shard_count"] == 6
+    assert len(plan["shards"]) == 6
+
+
+def test_wikipedia_pinned_commit_used(tmp_path):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+    assert "b04c8d1ceb2f5cd4588862100d08de323dccfbaa" in mat.base_url
+
+
+def test_wikipedia_mocked_6_shards(tmp_path, monkeypatch):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    manifest = mat.materialize()
+    assert manifest.status == "COMPLETE"
+    assert manifest.total_files == 6
+    assert manifest.dataset_config == "20231101.pt"
+
+
+def test_wikipedia_trusted_reuse(tmp_path, monkeypatch):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    mat.materialize()
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: 1 / 0)
+    mat.materialize()
+
+
+def test_wikipedia_corruption_rejected(tmp_path, monkeypatch):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    mat.materialize()
+    (
+        tmp_path / "wikipedia" / "20231101.pt" / "train-00000-of-00006.parquet"
+    ).write_text("bad")
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        mat.materialize()
+
+
+def test_wikipedia_partial_recovery(tmp_path, monkeypatch):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+
+    calls = []
+
+    class MockResp:
+        def __init__(self, url):
+            self.url = url
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    def mock_get(self_obj, url, *a, **k):
+        calls.append(url)
+        if len(calls) == 3:
+            raise Exception("Fail on 3rd")
+        return MockResp(url)
+
+    monkeypatch.setattr("requests.Session.get", mock_get)
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    monkeypatch.setattr("time.sleep", lambda x: None)
+
+    manifest = mat.materialize(max_retries=1, concurrency=1)
+    assert manifest.status == "FAILED"
+
+    calls.clear()
+
+    def mock_get2(self_obj, url, *a, **k):
+        calls.append(url)
+        return MockResp(url)
+
+    monkeypatch.setattr("requests.Session.get", mock_get2)
+
+    manifest = mat.materialize(max_retries=1, concurrency=1)
+    assert manifest.status == "COMPLETE"
+    assert len(calls) < 6
+
+
+def test_wikipedia_manifest_shard_oids(tmp_path, monkeypatch):
+    mat = WikipediaMaterializer(
+        destination_override=tmp_path / "wikipedia", allow_custom_destination=True
+    )
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    manifest = mat.materialize()
+    assert manifest.upstream_shard_oids
+    assert "train-00000-of-00006.parquet" in manifest.upstream_shard_oids
+
+
+# CAROLINA
+def test_carolina_materializer_plan(tmp_path):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+    plan = mat.plan()
+    assert "dat" in plan["taxonomies"]
+    assert plan["pinned_commit_sha"] == "55e63a519393c70a48dcfa14a558499c6bb0583b"
+
+
+def test_carolina_mocked_discovery_and_download(tmp_path, monkeypatch):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    def mock_list_files(self, path):
+        return [f"{path}/checksum.sha256", f"{path}/f0.xml.gz"]
+
+    monkeypatch.setattr(CarolinaMaterializer, "_list_files", mock_list_files)
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+
+    manifest = mat.materialize(concurrency=10)
+    assert manifest.status == "COMPLETE"
+    assert manifest.taxonomy_file_counts
+
+
+def test_carolina_checksum_files_acquired(tmp_path, monkeypatch):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    def mock_list_files(self, path):
+        return [f"{path}/checksum.sha256", f"{path}/1.xml.gz"]
+
+    monkeypatch.setattr(CarolinaMaterializer, "_list_files", mock_list_files)
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    manifest = mat.materialize()
+    assert manifest.status == "COMPLETE"
+    assert "dat" in manifest.taxonomy_checksum_files
+
+
+def test_carolina_trusted_reuse(tmp_path, monkeypatch):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    def mock_list_files(self, path):
+        return [f"{path}/1.xml.gz"]
+
+    monkeypatch.setattr(CarolinaMaterializer, "_list_files", mock_list_files)
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    mat.materialize()
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: 1 / 0)
+    mat.materialize()
+
+
+def test_carolina_corruption_rejected(tmp_path, monkeypatch):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    def mock_list_files(self, path):
+        return [f"{path}/1.xml.gz"]
+
+    monkeypatch.setattr(CarolinaMaterializer, "_list_files", mock_list_files)
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    mat.materialize()
+
+    (tmp_path / "carolina" / "corpus" / "judicial_branch" / "1.xml.gz").write_text(
+        "bad"
+    )
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        mat.materialize()
+
+
+def test_carolina_taxonomy_coverage(tmp_path, monkeypatch):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    def mock_list_files(self, path):
+        return [f"{path}/1.xml.gz"]
+
+    monkeypatch.setattr(CarolinaMaterializer, "_list_files", mock_list_files)
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    monkeypatch.setattr("requests.Session.get", lambda *a, **k: MockResp())
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    manifest = mat.materialize()
+
+    assert len(manifest.taxonomy_file_counts) == 7
+
+
+def test_carolina_pinned_commit_url(tmp_path, monkeypatch):
+    mat = CarolinaMaterializer(
+        destination_override=tmp_path / "carolina", allow_custom_destination=True
+    )
+
+    def mock_list_files(self, path):
+        return [f"{path}/1.xml.gz"]
+
+    monkeypatch.setattr(CarolinaMaterializer, "_list_files", mock_list_files)
+
+    urls = []
+
+    class MockResp:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    def mock_get(self_obj, url, *a, **k):
+        urls.append(url)
+        return MockResp()
+
+    monkeypatch.setattr("requests.Session.get", mock_get)
+    monkeypatch.setattr(
+        "cambacica.corpus.materialize._get_clean_tool_git_commit", lambda: "fake"
+    )
+    mat.materialize()
+
+    assert all("55e63a519393c70a48dcfa14a558499c6bb0583b" in u for u in urls)

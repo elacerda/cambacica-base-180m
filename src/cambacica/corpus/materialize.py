@@ -219,6 +219,14 @@ class MaterializationManifest:
     failed_ids: List[int] = field(default_factory=list)
     failure_reasons: Dict[str, str] = field(default_factory=dict)
     files: List[Dict[str, Any]] = field(default_factory=list)
+    taxonomy_file_counts: Optional[Dict[str, int]] = None
+    taxonomy_checksum_files: Optional[Dict[str, str]] = None
+    dataset_config: Optional[str] = None
+    snapshot_identifier: Optional[str] = None
+    upstream_shard_oids: Optional[Dict[str, str]] = None
+    raw_artifact_name: Optional[str] = None
+    line_count: Optional[int] = None
+    upstream_blob_oid: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert manifest to a serializable dictionary.
@@ -435,6 +443,35 @@ class MaterializationManifest:
                         )
         elif self.source == "gutenberg_pt" and self.status == "COMPLETE":
             errors.append("COMPLETE Gutenberg manifest is missing frozen ebook_ids.")
+
+        if self.source == "carolina" and self.status == "COMPLETE":
+            if not self.taxonomy_file_counts:
+                errors.append(
+                    "COMPLETE Carolina manifest is missing taxonomy_file_counts."
+                )
+            else:
+                expected_keys = {"dat", "jud", "leg", "pub", "soc", "uni", "wik"}
+                actual_keys = set(self.taxonomy_file_counts.keys())
+                if actual_keys != expected_keys:
+                    errors.append(
+                        f"Carolina taxonomy keys mismatch: {actual_keys} vs {expected_keys}"
+                    )
+                total_tax_files = sum(self.taxonomy_file_counts.values())
+                total_checksums = (
+                    len(self.taxonomy_checksum_files)
+                    if self.taxonomy_checksum_files
+                    else 0
+                )
+                if total_tax_files + total_checksums != self.total_files:
+                    errors.append(
+                        f"Carolina taxonomy total files ({total_tax_files} + {total_checksums}) != total_files ({self.total_files})"
+                    )
+
+        if self.source == "wikipedia_pt" and self.status == "COMPLETE":
+            if self.total_files != 6:
+                errors.append(
+                    f"COMPLETE Wikipedia manifest has {self.total_files} files, expected 6."
+                )
 
         # Verify files list integrity
         computed_total_bytes = 0
@@ -1357,14 +1394,640 @@ class GenericStubMaterializer(BaseMaterializer):
         )
 
 
+class ParlamentoMaterializer(BaseMaterializer):
+    def __init__(
+        self,
+        config_path="configs/corpus_materialization.yaml",
+        destination_override=None,
+        allow_custom_destination=False,
+    ) -> None:
+        super().__init__(
+            source_name="parlamento_pt",
+            config_path=config_path,
+            destination_override=destination_override,
+            allow_custom_destination=allow_custom_destination,
+        )
+        self.pinned_commit = self.source_config.get(
+            "pinned_commit_sha", "08f13e7e63ab9bfbd8c0b40955defe3bb7f68c2b"
+        )
+        self.filename = "train.txt"
+        self.url = f"https://huggingface.co/datasets/PORTULAN/parlamento-pt/resolve/{self.pinned_commit}/{self.filename}"
+        self.expected_size = 2709043913
+        self.upstream_blob_oid = "d01100ee7525d918539d8a2c2cea2836c7948191"
+
+    def plan(self):
+        """Generate a dry-run materialization plan.
+
+        Returns
+        -------
+        dict
+            Plan dictionary with all fields expected by the CLI dry-run display.
+        """
+        return {
+            "source": self.source_name,
+            "canonical_name": "PORTULAN/parlamento-pt",
+            "repository": "PORTULAN/parlamento-pt",
+            "pinned_revision": self.source_config.get("pinned_revision", "main"),
+            "pinned_commit_sha": self.pinned_commit,
+            "acquisition_mode": "single_file_download",
+            "destination": str(self.destination),
+            "artifact_name": self.filename,
+            "artifact_url": self.url,
+            "upstream_blob_oid": self.upstream_blob_oid,
+            "estimated_raw_size": "~2.52 GiB (2,709,043,913 bytes)",
+            "checksum_provenance_requirements": (
+                "local SHA-256; upstream LFS blob OID recorded"
+            ),
+        }
+
+    def materialize(self, concurrency=4, timeout=25, max_retries=3, **kwargs):
+        tool_git_commit = _get_clean_tool_git_commit()
+        self.destination.mkdir(parents=True, exist_ok=True)
+        manifest_path = self.destination / "manifest.json"
+        in_progress_path = self.destination / "manifest.in_progress.json"
+
+        # Check existing complete manifest
+        if manifest_path.is_file():
+            prev = MaterializationManifest.load(manifest_path)
+            if prev.status == "COMPLETE":
+                valid, _ = prev.verify(self.destination)
+                if valid:
+                    return prev
+                else:
+                    raise RuntimeError("Existing COMPLETE manifest failed verify.")
+
+        manifest = MaterializationManifest(
+            source=self.source_name,
+            upstream_repository=self.source_config.get(
+                "repository", "PORTULAN/parlamento-pt"
+            ),
+            pinned_revision=self.source_config.get("pinned_revision", "main"),
+            pinned_commit_sha=self.pinned_commit,
+            tool_git_commit=tool_git_commit,
+            status="PARTIAL",
+            raw_artifact_name=self.filename,
+            upstream_blob_oid=self.upstream_blob_oid,
+        )
+
+        final_path = self.destination / self.filename
+        partial_path = self.destination / f"{self.filename}.partial"
+
+        if final_path.exists():
+            raise RuntimeError("File exists but manifest not complete/valid.")
+
+        manifest.save(in_progress_path)
+
+        import requests
+        import time
+
+        session = requests.Session()
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                resp = session.get(self.url, timeout=timeout, stream=True)
+                resp.raise_for_status()
+                hasher = hashlib.sha256()
+                bytes_count = 0
+                lines_count = 0
+                with open(partial_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1048576):
+                        if chunk:
+                            f.write(chunk)
+                            hasher.update(chunk)
+                            bytes_count += len(chunk)
+                            lines_count += chunk.count(b"\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                os.replace(partial_path, final_path)
+                sha = hasher.hexdigest()
+                manifest.line_count = lines_count
+
+                record = MaterializedFileRecord(
+                    relative_path=self.filename,
+                    upstream_identifier=self.filename,
+                    url=self.url,
+                    bytes=bytes_count,
+                    sha256=sha,
+                    checksum_source="local_sha256",
+                )
+                manifest.files = [record.to_dict()]
+                manifest.total_files = 1
+                manifest.total_bytes = bytes_count
+                manifest.status = "COMPLETE"
+                manifest.acquisition_completed_at = datetime.now(
+                    timezone.utc
+                ).isoformat()
+
+                valid, errors = manifest.verify(
+                    self.destination,
+                    check_partial_files=False,
+                    check_runtime_state=False,
+                )
+                if not valid:
+                    raise RuntimeError(f"Verify failed: {errors}")
+
+                manifest.save(manifest_path)
+                in_progress_path.unlink(missing_ok=True)
+                return manifest
+
+            except Exception as e:
+                last_error = e
+                if partial_path.exists():
+                    partial_path.unlink()
+                time.sleep(1)
+
+        manifest.status = "FAILED"
+        manifest.failure_reasons = {self.filename: str(last_error)}
+        manifest.save(in_progress_path)
+        return manifest
+
+
+WIKIPEDIA_PT_SHARDS = [
+    {
+        "name": "train-00000-of-00006.parquet",
+        "upstream_oid": "eebdb1cbfe35d9ab278616f374a2f3071a4e5678",
+        "expected_bytes": 425972594,
+    },
+    {
+        "name": "train-00001-of-00006.parquet",
+        "upstream_oid": "37f1eb91948e151a4e1eb789517533a6f3ab307e",
+        "expected_bytes": 212472795,
+    },
+    {
+        "name": "train-00002-of-00006.parquet",
+        "upstream_oid": "c2f09e8490e502bbd20f5d3e9413c68f9d902985",
+        "expected_bytes": 202884385,
+    },
+    {
+        "name": "train-00003-of-00006.parquet",
+        "upstream_oid": "3ab581d3ad28a06a81d65923c5f6bfe2d2af1ae3",
+        "expected_bytes": 218920129,
+    },
+    {
+        "name": "train-00004-of-00006.parquet",
+        "upstream_oid": "f3d7b2f3f9b581daeb94c814fbc087c5c56ae645",
+        "expected_bytes": 227282628,
+    },
+    {
+        "name": "train-00005-of-00006.parquet",
+        "upstream_oid": "964738db11fc45435a7eafd04c79a7d96e95a923",
+        "expected_bytes": 292108528,
+    },
+]
+
+
+class WikipediaMaterializer(BaseMaterializer):
+    def __init__(
+        self,
+        config_path="configs/corpus_materialization.yaml",
+        destination_override=None,
+        allow_custom_destination=False,
+    ) -> None:
+        super().__init__(
+            source_name="wikipedia_pt",
+            config_path=config_path,
+            destination_override=destination_override,
+            allow_custom_destination=allow_custom_destination,
+        )
+        self.pinned_commit = self.source_config.get(
+            "pinned_commit_sha", "b04c8d1ceb2f5cd4588862100d08de323dccfbaa"
+        )
+        self.config_dir = "20231101.pt"
+        self.base_url = f"https://huggingface.co/datasets/wikimedia/wikipedia/resolve/{self.pinned_commit}/{self.config_dir}/"
+
+    def plan(self):
+        """Generate a dry-run materialization plan.
+
+        Returns
+        -------
+        dict
+            Plan dictionary with all fields expected by the CLI dry-run display.
+        """
+        total_bytes = sum(s["expected_bytes"] for s in WIKIPEDIA_PT_SHARDS)
+        return {
+            "source": self.source_name,
+            "canonical_name": "wikimedia/wikipedia",
+            "repository": "wikimedia/wikipedia",
+            "pinned_revision": self.config_dir,
+            "pinned_commit_sha": self.pinned_commit,
+            "acquisition_mode": "hf_parquet_snapshot",
+            "destination": str(self.destination),
+            "dataset_config": self.config_dir,
+            "snapshot_identifier": self.config_dir,
+            "shard_count": len(WIKIPEDIA_PT_SHARDS),
+            "shards": [s["name"] for s in WIKIPEDIA_PT_SHARDS],
+            "upstream_shard_oids": {
+                s["name"]: s["upstream_oid"] for s in WIKIPEDIA_PT_SHARDS
+            },
+            "estimated_raw_size": (
+                f"~{total_bytes / (1024**3):.2f} GiB ({total_bytes:,} bytes)"
+            ),
+            "checksum_provenance_requirements": (
+                "local SHA-256; upstream LFS OID recorded per shard"
+            ),
+        }
+
+    def materialize(self, concurrency=4, timeout=25, max_retries=3, **kwargs):
+        tool_git_commit = _get_clean_tool_git_commit()
+        self.destination.mkdir(parents=True, exist_ok=True)
+        (self.destination / self.config_dir).mkdir(parents=True, exist_ok=True)
+        manifest_path = self.destination / "manifest.json"
+        in_progress_path = self.destination / "manifest.in_progress.json"
+
+        trusted_records = {}
+
+        # Check existing complete manifest
+        if manifest_path.is_file():
+            prev = MaterializationManifest.load(manifest_path)
+            if prev.status == "COMPLETE":
+                valid, _ = prev.verify(
+                    self.destination,
+                    check_partial_files=False,
+                    check_runtime_state=False,
+                )
+                if valid:
+                    return prev
+                else:
+                    raise RuntimeError("Existing COMPLETE manifest failed verify.")
+
+        if in_progress_path.is_file():
+            prev = MaterializationManifest.load(in_progress_path)
+            if prev.tool_git_commit == tool_git_commit:
+                for f in prev.files:
+                    trusted_records[f["upstream_identifier"]] = f
+
+        upstream_oids = {s["name"]: s["upstream_oid"] for s in WIKIPEDIA_PT_SHARDS}
+        manifest = MaterializationManifest(
+            source=self.source_name,
+            upstream_repository=self.source_config.get(
+                "repository", "wikimedia/wikipedia"
+            ),
+            pinned_revision=self.source_config.get("pinned_revision", "20231101.pt"),
+            pinned_commit_sha=self.pinned_commit,
+            tool_git_commit=tool_git_commit,
+            status="PARTIAL",
+            dataset_config=self.config_dir,
+            snapshot_identifier=self.config_dir,
+            upstream_shard_oids=upstream_oids,
+        )
+
+        completed_files = []
+        failure_reasons = {}
+
+        def download_shard(shard_info):
+            name = shard_info["name"]
+            url = self.base_url + name
+            rel_path = f"{self.config_dir}/{name}"
+            final_path = self.destination / rel_path
+            partial_path = self.destination / f"{rel_path}.partial"
+
+            if final_path.is_file() and name in trusted_records:
+                r = trusted_records[name]
+                if (
+                    final_path.stat().st_size == r["bytes"]
+                    and compute_file_sha256(final_path) == r["sha256"]
+                ):
+                    return True, name, r
+                else:
+                    raise RuntimeError("Changed/corrupted payload")
+
+            import requests
+            import time
+
+            session = requests.Session()
+            last_err = None
+            for attempt in range(max_retries):
+                try:
+                    resp = session.get(url, timeout=timeout, stream=True)
+                    resp.raise_for_status()
+                    hasher = hashlib.sha256()
+                    bytes_count = 0
+                    with open(partial_path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=1048576):
+                            if chunk:
+                                f.write(chunk)
+                                hasher.update(chunk)
+                                bytes_count += len(chunk)
+                        f.flush()
+                        os.fsync(f.fileno())
+
+                    os.replace(partial_path, final_path)
+                    sha = hasher.hexdigest()
+
+                    record = MaterializedFileRecord(
+                        relative_path=rel_path,
+                        upstream_identifier=name,
+                        url=url,
+                        bytes=bytes_count,
+                        sha256=sha,
+                        checksum_source="local_sha256",
+                    )
+                    return True, name, record.to_dict()
+                except Exception as e:
+                    last_err = e
+                    if partial_path.exists():
+                        partial_path.unlink()
+                    time.sleep(1)
+
+            return False, name, str(last_err)
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(download_shard, s) for s in WIKIPEDIA_PT_SHARDS]
+            for fut in concurrent.futures.as_completed(futures):
+                success, name, res = fut.result()
+                if success:
+                    completed_files.append(res)
+                else:
+                    # Wikipedia shard names are not integer IDs; track failures only in
+                    # failure_reasons, not failed_ids (which is reserved for integer keys).
+                    failure_reasons[name] = res
+
+        manifest.files = sorted(completed_files, key=lambda r: r["relative_path"])
+        manifest.total_files = len(completed_files)
+        manifest.total_bytes = sum(f["bytes"] for f in completed_files)
+        manifest.failure_reasons = failure_reasons
+
+        if len(completed_files) == len(WIKIPEDIA_PT_SHARDS) and not failure_reasons:
+            manifest.status = "COMPLETE"
+            manifest.acquisition_completed_at = datetime.now(timezone.utc).isoformat()
+            # Verify BEFORE saving as COMPLETE — a failed verify must not persist.
+            valid, errs = manifest.verify(
+                self.destination, check_partial_files=False, check_runtime_state=False
+            )
+            if not valid:
+                manifest.status = "FAILED"
+                manifest.save(in_progress_path)
+                raise RuntimeError(
+                    "Refusing to publish COMPLETE Wikipedia manifest because payload "
+                    "verification failed: " + "; ".join(errs[:5])
+                )
+            manifest.save(manifest_path)
+            in_progress_path.unlink(missing_ok=True)
+        else:
+            manifest.status = "FAILED"
+            manifest.save(in_progress_path)
+
+        return manifest
+
+
+CAROLINA_TAXONOMY_DIRS = {
+    "dat": "corpus/datasets_and_other_corpora",
+    "jud": "corpus/judicial_branch",
+    "leg": "corpus/legislative_branch",
+    "pub": "corpus/public_domain_works",
+    "soc": "corpus/social_media",
+    "uni": "corpus/university_domains",
+    "wik": "corpus/wikis",
+}
+
+
+class CarolinaMaterializer(BaseMaterializer):
+    def __init__(
+        self,
+        config_path="configs/corpus_materialization.yaml",
+        destination_override=None,
+        allow_custom_destination=False,
+    ) -> None:
+        super().__init__(
+            source_name="carolina",
+            config_path=config_path,
+            destination_override=destination_override,
+            allow_custom_destination=allow_custom_destination,
+        )
+        self.pinned_commit = self.source_config.get(
+            "pinned_commit_sha", "55e63a519393c70a48dcfa14a558499c6bb0583b"
+        )
+        self.api_base = (
+            "https://huggingface.co/api/datasets/carolina-c4ai/corpus-carolina/tree"
+        )
+        self.resolve_base = (
+            "https://huggingface.co/datasets/carolina-c4ai/corpus-carolina/resolve"
+        )
+
+    def plan(self):
+        """Generate a dry-run materialization plan.
+
+        Returns
+        -------
+        dict
+            Plan dictionary with all fields expected by the CLI dry-run display.
+        """
+        # Expected .xml.gz file counts per taxonomy from upstream audit (v2.0.1).
+        expected_file_counts = {
+            "dat": 153,
+            "jud": 37,
+            "leg": 161,
+            "pub": 1,
+            "soc": 2,
+            "uni": 7,
+            "wik": 193,
+        }
+        total_xml = sum(expected_file_counts.values())
+        total_artifacts = total_xml + len(CAROLINA_TAXONOMY_DIRS)  # + checksum files
+        return {
+            "source": self.source_name,
+            "canonical_name": "carolina-c4ai/corpus-carolina",
+            "repository": "carolina-c4ai/corpus-carolina",
+            "pinned_revision": self.source_config.get("pinned_revision", "v2.0.1"),
+            "pinned_commit_sha": self.pinned_commit,
+            "acquisition_mode": "full_corpus_acquisition",
+            "destination": str(self.destination),
+            "taxonomies": list(CAROLINA_TAXONOMY_DIRS.keys()),
+            "expected_xml_gz_files": total_xml,
+            "expected_checksum_files": len(CAROLINA_TAXONOMY_DIRS),
+            "expected_total_artifacts": total_artifacts,
+            "expected_taxonomy_file_counts": expected_file_counts,
+            "estimated_raw_size": "~3.10 GiB (3,106,333,225 bytes compressed)",
+            "checksum_provenance_requirements": (
+                "local SHA-256; upstream checksum.sha256 files per taxonomy acquired"
+            ),
+        }
+
+    def _list_files(self, path):
+        import requests
+
+        url = f"{self.api_base}/{self.pinned_commit}/{path}"
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        files = []
+        for item in r.json():
+            if item["type"] == "directory":
+                files.extend(self._list_files(item["path"]))
+            elif item["type"] == "file":
+                files.append(item["path"])
+        return files
+
+    def materialize(self, concurrency=4, timeout=25, max_retries=3, **kwargs):
+        tool_git_commit = _get_clean_tool_git_commit()
+        self.destination.mkdir(parents=True, exist_ok=True)
+        manifest_path = self.destination / "manifest.json"
+        in_progress_path = self.destination / "manifest.in_progress.json"
+
+        trusted_records = {}
+        file_list_to_download = []
+
+        if manifest_path.is_file():
+            prev = MaterializationManifest.load(manifest_path)
+            if prev.status == "COMPLETE":
+                valid, _ = prev.verify(
+                    self.destination,
+                    check_partial_files=False,
+                    check_runtime_state=False,
+                )
+                if valid:
+                    return prev
+                else:
+                    raise RuntimeError("Existing COMPLETE manifest failed verify.")
+
+        if in_progress_path.is_file():
+            prev = MaterializationManifest.load(in_progress_path)
+            if prev.tool_git_commit == tool_git_commit:
+                for f in prev.files:
+                    trusted_records[f["relative_path"]] = f
+
+        if not file_list_to_download:
+            for k, dirpath in CAROLINA_TAXONOMY_DIRS.items():
+                file_list_to_download.extend(self._list_files(dirpath))
+
+        manifest = MaterializationManifest(
+            source=self.source_name,
+            upstream_repository=self.source_config.get(
+                "repository", "carolina-c4ai/corpus-carolina"
+            ),
+            pinned_revision=self.source_config.get("pinned_revision", "v2.0.1"),
+            pinned_commit_sha=self.pinned_commit,
+            tool_git_commit=tool_git_commit,
+            status="PARTIAL",
+            taxonomy_file_counts={},
+            taxonomy_checksum_files={},
+        )
+
+        completed_files = []
+        failure_reasons = {}
+
+        def download_file(hf_path):
+            url = f"{self.resolve_base}/{self.pinned_commit}/{hf_path}"
+            rel_path = hf_path
+            final_path = self.destination / rel_path
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            partial_path = self.destination / f"{rel_path}.partial"
+
+            if final_path.is_file() and rel_path in trusted_records:
+                r = trusted_records[rel_path]
+                if (
+                    final_path.stat().st_size == r["bytes"]
+                    and compute_file_sha256(final_path) == r["sha256"]
+                ):
+                    return True, rel_path, r
+                else:
+                    raise RuntimeError("Changed/corrupted payload")
+
+            import requests
+            import time
+
+            session = requests.Session()
+            last_err = None
+            for attempt in range(max_retries):
+                try:
+                    resp = session.get(url, timeout=timeout, stream=True)
+                    resp.raise_for_status()
+                    hasher = hashlib.sha256()
+                    bytes_count = 0
+                    with open(partial_path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=1048576):
+                            if chunk:
+                                f.write(chunk)
+                                hasher.update(chunk)
+                                bytes_count += len(chunk)
+                        f.flush()
+                        os.fsync(f.fileno())
+
+                    os.replace(partial_path, final_path)
+                    sha = hasher.hexdigest()
+
+                    record = MaterializedFileRecord(
+                        relative_path=rel_path,
+                        upstream_identifier=rel_path,
+                        url=url,
+                        bytes=bytes_count,
+                        sha256=sha,
+                        checksum_source="local_sha256",
+                    )
+                    return True, rel_path, record.to_dict()
+                except Exception as e:
+                    last_err = e
+                    if partial_path.exists():
+                        partial_path.unlink()
+                    time.sleep(1)
+
+            return False, rel_path, str(last_err)
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(download_file, p) for p in file_list_to_download]
+            for fut in concurrent.futures.as_completed(futures):
+                success, rp, res = fut.result()
+                if success:
+                    completed_files.append(res)
+                else:
+                    # Carolina paths are strings; track failures only in failure_reasons.
+                    failure_reasons[rp] = res
+
+        # Sort deterministically before writing manifest.
+        manifest.files = sorted(completed_files, key=lambda r: r["relative_path"])
+        manifest.total_files = len(completed_files)
+        manifest.total_bytes = sum(f["bytes"] for f in completed_files)
+        manifest.failure_reasons = failure_reasons
+
+        # Compute taxonomy counts from acquired files.
+        for f in completed_files:
+            rp = f["relative_path"]
+            if rp.endswith(".xml.gz"):
+                for tax, prefix in CAROLINA_TAXONOMY_DIRS.items():
+                    if rp.startswith(prefix):
+                        manifest.taxonomy_file_counts[tax] = (
+                            manifest.taxonomy_file_counts.get(tax, 0) + 1
+                        )
+            elif rp.endswith("checksum.sha256"):
+                for tax, prefix in CAROLINA_TAXONOMY_DIRS.items():
+                    if rp.startswith(prefix):
+                        manifest.taxonomy_checksum_files[tax] = rp
+
+        if len(completed_files) == len(file_list_to_download) and not failure_reasons:
+            manifest.status = "COMPLETE"
+            manifest.acquisition_completed_at = datetime.now(timezone.utc).isoformat()
+            # Verify BEFORE saving as COMPLETE — a failed verify must not persist.
+            valid, errs = manifest.verify(
+                self.destination, check_partial_files=False, check_runtime_state=False
+            )
+            if not valid:
+                manifest.status = "FAILED"
+                manifest.save(in_progress_path)
+                raise RuntimeError(
+                    "Refusing to publish COMPLETE Carolina manifest because payload "
+                    "verification failed: " + "; ".join(errs[:5])
+                )
+            manifest.save(manifest_path)
+            in_progress_path.unlink(missing_ok=True)
+        else:
+            manifest.status = "FAILED"
+            manifest.save(in_progress_path)
+
+        return manifest
+
+
 MATERIALIZER_REGISTRY = {
     "gutenberg_pt": GutenbergMaterializer,
     "gutenberg": GutenbergMaterializer,
-    "carolina": GenericStubMaterializer,
-    "wikipedia_pt": GenericStubMaterializer,
-    "wikipedia": GenericStubMaterializer,
-    "parlamento_pt": GenericStubMaterializer,
-    "parlamento": GenericStubMaterializer,
+    "carolina": CarolinaMaterializer,
+    "wikipedia_pt": WikipediaMaterializer,
+    "wikipedia": WikipediaMaterializer,
+    "parlamento_pt": ParlamentoMaterializer,
+    "parlamento": ParlamentoMaterializer,
     "gigaverbo_v2": GenericStubMaterializer,
     "gigaverbo": GenericStubMaterializer,
 }
@@ -1376,43 +2039,13 @@ def get_materializer(
     destination: Optional[Path | str] = None,
     allow_custom_destination: bool = False,
 ) -> BaseMaterializer:
-    """Instantiate the materializer registered for a given source.
-
-    Parameters
-    ----------
-    source : str
-        Source identifier.
-    config_path : Path or str, default DEFAULT_CONFIG_PATH
-        Path to materialization YAML config.
-    destination : Path or str or None, optional
-        Optional destination override.
-    allow_custom_destination : bool, default False
-        Allow paths outside /mnt/data for testing.
-
-    Returns
-    -------
-    BaseMaterializer
-        Instantiated materializer.
-
-    Raises
-    ------
-    ValueError
-        If source is not in the materializer registry.
-    """
     key = source.lower().replace("-", "_")
     cls = MATERIALIZER_REGISTRY.get(key)
     if not cls:
         raise ValueError(
             f"Unknown source '{source}'. Supported: {sorted(MATERIALIZER_REGISTRY.keys())}"
         )
-    if cls is GutenbergMaterializer:
-        return GutenbergMaterializer(
-            config_path=config_path,
-            destination_override=destination,
-            allow_custom_destination=allow_custom_destination,
-        )
-    return GenericStubMaterializer(
-        source_name=key,
+    return cls(
         config_path=config_path,
         destination_override=destination,
         allow_custom_destination=allow_custom_destination,

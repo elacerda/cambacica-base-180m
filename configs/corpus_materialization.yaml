@@ -27,7 +27,7 @@ sources:
     pinned_commit_sha: "55e63a519393c70a48dcfa14a558499c6bb0583b"
     acquisition_mode: "full_corpus_acquisition"
     description: >
-      Acquire all 823 XML.GZ shards preserving TEI headers and document metadata
+      Acquire all 554 XML.GZ shards preserving TEI headers and document metadata
       across all 7 taxonomies (dat, wik, jud, uni, soc, leg, pub).
     destination: "/mnt/data/cambacica-base-180m/raw/carolina/"
     estimated_raw_size: "8.3 GB"
@@ -46,7 +46,7 @@ sources:
     pinned_commit_sha: "b04c8d1ceb2f5cd4588862100d08de323dccfbaa"
     acquisition_mode: "full_snapshot_articles"
     description: >
-      Acquire the official Wikimedia 20231101 Portuguese encyclopedic articles dataset dump.
+      Acquire the official Wikimedia 20231101 Portuguese encyclopedic articles dataset dump (6 Parquet shards).
     destination: "/mnt/data/cambacica-base-180m/raw/wikipedia/"
     estimated_raw_size: "2.5 GB"
     estimated_normalized_size: "7-9 GB"
