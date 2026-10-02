@@ -227,6 +227,7 @@ class MaterializationManifest:
     raw_artifact_name: Optional[str] = None
     line_count: Optional[int] = None
     upstream_blob_oid: Optional[str] = None
+    source_metadata: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert manifest to a serializable dictionary.
@@ -2046,8 +2047,6 @@ MATERIALIZER_REGISTRY = {
     "wikipedia": WikipediaMaterializer,
     "parlamento_pt": ParlamentoMaterializer,
     "parlamento": ParlamentoMaterializer,
-    "gigaverbo_v2": GenericStubMaterializer,
-    "gigaverbo": GenericStubMaterializer,
 }
 
 
@@ -2058,10 +2057,20 @@ def get_materializer(
     allow_custom_destination: bool = False,
 ) -> BaseMaterializer:
     key = source.lower().replace("-", "_")
+    if key in {"gigaverbo_v2", "gigaverbo"}:
+        from cambacica.corpus.materialize_gigaverbo import GigaverboV2Materializer
+
+        return GigaverboV2Materializer(
+            config_path=config_path,
+            destination_override=destination,
+            allow_custom_destination=allow_custom_destination,
+        )
+
     cls = MATERIALIZER_REGISTRY.get(key)
     if not cls:
         raise ValueError(
-            f"Unknown source '{source}'. Supported: {sorted(MATERIALIZER_REGISTRY.keys())}"
+            f"Unknown source '{source}'. Supported: "
+            f"{sorted([*MATERIALIZER_REGISTRY.keys(), 'gigaverbo', 'gigaverbo_v2'])}"
         )
     return cls(
         config_path=config_path,

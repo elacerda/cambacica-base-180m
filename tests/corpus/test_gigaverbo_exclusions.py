@@ -107,9 +107,7 @@ def test_gigaverbo_audit_visits_all_shards(monkeypatch, tmp_path):
     monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
     monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
 
-    import huggingface_hub
-
-    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: MockFS())
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
 
     sampler = GigaVerboSampler()
     _, manifest = sampler.sample(
@@ -173,9 +171,7 @@ def test_gigaverbo_candidate_applies_exclusions_before_sampling(monkeypatch, tmp
     monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
     monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
 
-    import huggingface_hub
-
-    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: MockFS())
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
 
     sampler = GigaVerboSampler()
     _, manifest = sampler.sample(
@@ -430,9 +426,7 @@ def test_gigaverbo_candidate_visits_all_shards(monkeypatch, tmp_path):
     monkeypatch.setattr(gv_mod, "resolve_hf_commit_sha", lambda *a, **k: "testsha")
     monkeypatch.setattr(pq, "ParquetFile", mock_parquet_file)
 
-    import huggingface_hub
-
-    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda: MockFS())
+    monkeypatch.setattr(gv_mod, "HfFileSystem", lambda: MockFS())
 
     sampler = GigaVerboSampler()
     _, manifest = sampler.sample(

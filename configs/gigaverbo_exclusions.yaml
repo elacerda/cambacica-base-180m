@@ -21,7 +21,7 @@ exclusions:
   # 1. Explicitly machine-translated datasets
   machine_translated:
     - name: "dolly_15k_libretranslate_pt"
-      match_patterns: ["*dolly*libretranslate*", "*dolly-15k-libretranslate-pt*"]
+      match_patterns: ["*dolly*libretranslate*", "*dolly-15k-libretranslate-pt*", "dolly_15k"]
       reason: "Explicitly machine-translated using LibreTranslate (CORPUS.md Sec 2.2)."
     - name: "bactrian_x"
       match_patterns: ["*bactrian*", "*Bactrian-X*"]
@@ -60,11 +60,20 @@ exclusions:
       match_patterns: ["*baixe*livros*", "*baixelivros*"]
       reason: "Public domain books tracked independently via Gutenberg and Wikisource."
 
+  outside_accepted_residual:
+    - name: "legal_pt"
+      match_patterns: ["legal_pt", "*LegalPT_dedup*"]
+      reason: "Outside the accepted 11-subset Gate C1 residual reservoir and not included in the provisional A/B/C candidates."
+    - name: "roots_pt_wikiquote"
+      match_patterns: ["roots", "*roots_pt_wikiquote*"]
+      reason: "Outside the accepted 11-subset Gate C1 residual reservoir and not included in the provisional A/B/C candidates."
+
 # Exact string or lowercase normalized match list for rapid evaluation
 blocked_subsets:
   - "gustrd/dolly-15k-libretranslate-pt"
   - "dolly-15k-libretranslate-pt"
   - "dolly_15k_libretranslate_pt"
+  - "dolly_15k"
   - "mbzuai/bactrian-x"
   - "bactrian-x"
   - "bactrian_x"
@@ -90,3 +99,5 @@ blocked_subsets:
   - "baixe livros"
   - "baixe_livros"
   - "baixelivros"
+  - "legal_pt"
+  - "roots"

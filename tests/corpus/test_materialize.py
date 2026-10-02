@@ -619,9 +619,9 @@ def test_cli_materialize_commands(tmp_path: Path):
     ret = main(["materialize", "gutenberg", "--dry-run"])
     assert ret == 0
 
-    # Non-pilot stub source
-    ret = main(["materialize", "gigaverbo"])
-    assert ret == 1
+    # GigaVerbo dry run must not start upstream materialization.
+    ret = main(["materialize", "gigaverbo", "--dry-run"])
+    assert ret == 0
 
     # Verify-only on empty directory
     empty_dir = tmp_path / "empty_gutenberg"

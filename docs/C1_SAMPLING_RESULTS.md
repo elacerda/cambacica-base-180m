@@ -69,8 +69,10 @@ A revisão usada no C1 é:
 
 `Polygl0t/gigaverbo-v2@7058ccf19eaeaf4505a96fc7e5305a01fc441fd8`
 
-A partição `edu_high` dessa revisão contém 16.245.599 registros em 56 shards e
-19 valores distintos de `subset` observados na auditoria de metadados.
+A amostra diagnóstica inicial observou 19 valores distintos de `subset`. O
+inventário físico posterior dos 56 shards e 16.245.599 registros encontrou 23
+valores; a diferença e a política aplicada aos rótulos adicionais estão
+registradas em [`C1_GIGAVERBO_PHYSICAL_AUDIT.md`](C1_GIGAVERBO_PHYSICAL_AUDIT.md).
 
 Entre eles existem subsets que não devem entrar deliberadamente no corpus
 principal do Cambacica, incluindo conteúdo de tradução automática, sintético,

@@ -518,16 +518,27 @@ def handle_materialize(args: argparse.Namespace) -> int:
             return 1
 
     # Live Materialization
+    effective_concurrency = args.concurrency
+    if source_name in {"gigaverbo", "gigaverbo_v2"}:
+        effective_concurrency = 1
     print(f"--> Materializing source '{source_name}'...")
     print(f"    Config:          {args.config}")
     print(f"    Destination:     {materializer.destination}")
-    print(f"    Concurrency:     {args.concurrency}")
+    if effective_concurrency == args.concurrency:
+        print(f"    Concurrency:     {effective_concurrency}")
+    else:
+        print(
+            f"    Concurrency:     {effective_concurrency} (serialized row-group stream; "
+            f"requested {args.concurrency})"
+        )
     print(f"    Timeout:         {args.timeout}s")
     print(f"    Max Retries:     {args.retries}")
 
     t0 = time.time()
     try:
         manifest = materializer.materialize(
+            # Keep the requested value for provenance; GigaVerbo records its
+            # serialized effective concurrency inside the source metadata.
             concurrency=args.concurrency,
             timeout=args.timeout,
             max_retries=args.retries,

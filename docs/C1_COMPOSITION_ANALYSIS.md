@@ -390,23 +390,31 @@ Avaliação científica da necessidade de inclusão ou inspeção antes do conge
 | **Literatura Gutenberg** | Snapshot 2026-10-01   | ~0,4 GB    | Totalidade| `.../raw/gutenberg/` | ~0,5 GB    | ~0,5 GB   | EBook IDs |
 |                          | (655 eBooks PT)       | (plain txt)| (catálogo)|                      | (Parquet)  |           | validados |
 +--------------------------+-----------------------+------------+-----------+----------------------+------------+-----------+-----------+
-| **GigaVerbo Residual**   | `edu_high`            | ~25–35 GB  | Streaming | `.../raw/gigaverbo/` | ~20–30 GB  | ~25 GB    | Commit    |
-|                          | `7058ccf19eae...`     | (seletivo) | filtrado  |                      | (Parquet)  |           | Exclusions|
+| **GigaVerbo Residual**   | `edu_high`            | ~74,22 GB* | Streaming | `.../raw/gigaverbo/` | ~20–30 GB† | não medido| Commit    |
+|                          | `7058ccf19eae...`     | (seletivo) | filtrado  |                      | (estim.)  |           | Exclusions|
 |                          |                       |            | por subset|                      |            |           | SHA-256   |
 +--------------------------+-----------------------+------------+-----------+----------------------+------------+-----------+-----------+
-| **TOTAIS DO WORKSPACE**  | **Todas Pinned**      | **~39–49GB**| **Seletivo**| `/mnt/data/cambacica`| **~42–60GB**| **~43–45GB**| **Auditável|
+| **TOTAIS DO WORKSPACE**  | **Todas Pinned**      | **~88 GB***| **Seletivo**| `/mnt/data/cambacica`| **~42–60GB**| **~43–45GB**| **Auditável|
 +--------------------------+-----------------------+------------+-----------+----------------------+------------+-----------+-----------+
 ```
+
+\* Estimativa atualizada após inventário físico completo da partição pinned:
+74,22 GB de Parquet filtrado no GigaVerbo e cerca de 88 GB de fontes raw no
+total. O tamanho transferido estimado é 74,75 GB comprimidos. Os tamanhos locais
+serão medidos no manifest de aquisição. Ver
+[`C1_GIGAVERBO_PHYSICAL_AUDIT.md`](C1_GIGAVERBO_PHYSICAL_AUDIT.md). † A estimativa
+de normalização não foi medida nesta atividade e permanece apenas como hipótese
+de planejamento.
 
 ### 7.2 Reavaliação do Orçamento de Armazenamento Frente à Medição Real
 - **Capacidade disponível medida em `/mnt/data`**: **64 TB livres** (1,6 TB ocupados de 66 TB totais).
 - **Consumo total previsto do pipeline de materialização e deduplicação**:
-  - `raw/`: ~40 a 50 GB;
+  - `raw/`: ~88 a 89 GB, incluindo a estimativa física atualizada do GigaVerbo;
   - `normalized/`: ~40 a 60 GB;
   - `deduplicated/` (após descarte de repetidos e boilerplate): ~35 a 50 GB;
   - `scratch/` (espaço temporário para LSH buckets, shuffles e índices): ~50 a 80 GB;
-  - **Volume total de pico de trabalho**: **~165 a 240 GB**.
-- **Conclusão**: O orçamento de trabalho consome menos de **0,38% do espaço livre medido**, confirmando total segurança de infraestrutura sem risco de saturação do storage NFS.
+  - **Volume total de pico de trabalho**: **~213 a 278 GB** (estimativa atualizada).
+- **Conclusão**: O orçamento de trabalho consome menos de **0,44% do espaço livre medido**. A estimativa continua pequena frente à capacidade disponível; os tamanhos de GigaVerbo ainda serão medidos durante a aquisição.
 
 ---
 

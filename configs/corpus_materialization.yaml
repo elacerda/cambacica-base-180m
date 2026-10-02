@@ -12,7 +12,7 @@ storage:
   root_path: "/mnt/data/cambacica-base-180m"
   filesystem_type: "NFSv4 (10.10.10.1:/srv/data)"
   measured_capacity: "66 TB total, 64 TB free (3% utilized)"
-  estimated_peak_working_volume: "165-240 GB (<0.38% of available storage)"
+  estimated_peak_working_volume: "about 213-278 GB (<0.44% of available storage; includes revised GigaVerbo physical estimate)"
   paths:
     raw: "/mnt/data/cambacica-base-180m/raw"
     normalized: "/mnt/data/cambacica-base-180m/normalized"
@@ -105,6 +105,10 @@ sources:
     pinned_revision: "edu_high"
     pinned_commit_sha: "7058ccf19eaeaf4505a96fc7e5305a01fc441fd8"
     exclusions_config: "configs/gigaverbo_exclusions.yaml"
+    physical_inventory: "docs/C1_GIGAVERBO_PHYSICAL_INVENTORY.json"
+    expected_shard_count: 56
+    expected_row_group_count: 1355
+    expected_total_records: 16245599
     acquisition_mode: "selective_row_group_filtered_streaming"
     description: >
       Acquisition is row-group/subset filtered across the pinned edu_high partition (56 shards).
@@ -113,7 +117,8 @@ sources:
       matching blocked subsets (e.g. ultrachat, xlsum, carolina, wikipedia) are discarded before
       persisting local raw Parquet buffers.
     destination: "/mnt/data/cambacica-base-180m/raw/gigaverbo/"
-    estimated_raw_size: "25-35 GB"
+    estimated_transfer_size: "74.75 GB compressed row groups, plus Parquet metadata/range overhead"
+    estimated_raw_size: "about 74.22 GB filtered Parquet; row-share estimate, measured output recorded in manifest"
     estimated_normalized_size: "20-30 GB"
     checksum_provenance_requirements: >
       Upstream revision identifier: pinned HuggingFace commit SHA (7058ccf19eaeaf4505a96fc7e5305a01fc441fd8).
