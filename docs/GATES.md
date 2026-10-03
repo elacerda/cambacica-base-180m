@@ -56,14 +56,16 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- próxima atividade: normalização e caracterização das fontes brutas (raw-source normalization and characterization).
+- normalização de produção e caracterização do C1 concluídas; próximo estágio: contrato e implementação da deduplicação global.
 
-### Normalização e caracterização brutas do C1
+### Normalização e caracterização de produção do C1
 
-- contrato versionado: [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0;
-- implementação e fixtures foram validados; a normalização de produção continua pendente;
-- a normalização completa e a caracterização dos volumes reais ainda estão pendentes;
-- o Gate C1 continua **IN PROGRESS**; C2 não começou.
+- contrato congelado: [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0;
+- normalização de produção **COMPLETE** e verificada para as cinco fontes no commit `ccf365279573bc5a443ac944785ece8e4f63fad2`;
+- caracterização **COMPLETE**; volume bruto total de **21.510.183.558 palavras normalizadas**;
+- capacidades máximas brutas, antes de deduplicação: A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`);
+- deduplicação ainda não executada; próxima atividade: fechar o contrato de deduplicação e então implementar a etapa;
+- o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:
 
