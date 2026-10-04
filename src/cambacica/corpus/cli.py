@@ -15,6 +15,14 @@ from typing import List, Optional
 import yaml
 
 from cambacica.corpus.dedup.exact import find_cross_source_exact_duplicates
+from cambacica.corpus.dedup.exact_pipeline import (
+    DEFAULT_EXACT_ROOT,
+    DEFAULT_PILOT_SEED,
+    DEFAULT_PILOT_SIZE,
+    build_exact_dedup,
+    run_exact_dedup_pilot,
+    verify_exact_dedup,
+)
 from cambacica.corpus.dedup.minhash import (
     MinHashConfig,
     find_minhash_near_duplicates,
@@ -537,6 +545,73 @@ def handle_characterize(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_exact_dedup(args: argparse.Namespace) -> int:
+    """Build, verify, or run the bounded Gate C1 exact-dedup pilot."""
+    try:
+        if args.mode == "verify":
+            errors = verify_exact_dedup(
+                normalized_root=args.normalized_root,
+                output_root=args.output_root,
+            )
+            if errors:
+                print("[ERROR] Exact-dedup verification failed:")
+                for error in errors:
+                    print(f"  - {error}")
+                return 1
+            print(f"[OK] Exact-dedup outputs verified: {args.output_root}")
+            return 0
+        if args.mode == "pilot":
+            manifest = run_exact_dedup_pilot(
+                normalized_root=args.normalized_root,
+                output_root=args.output_root,
+                size=args.pilot_size,
+                seed=args.seed,
+            )
+            print(
+                json.dumps(
+                    {
+                        "output_root": str(args.output_root),
+                        "run_type": manifest["run_type"],
+                        "input_record_count": manifest["input_record_count"],
+                        "retained_record_count": manifest["retained_record_count"],
+                        "eligible_duplicate_hash_groups": manifest[
+                            "eligible_duplicate_hash_groups"
+                        ],
+                        "pilot": manifest["pilot"],
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        manifest = build_exact_dedup(
+            normalized_root=args.normalized_root,
+            output_root=args.output_root,
+        )
+        print(
+            json.dumps(
+                {
+                    "output_root": str(args.output_root),
+                    "run_type": manifest["run_type"],
+                    "input_record_count": manifest["input_record_count"],
+                    "retained_record_count": manifest["retained_record_count"],
+                    "eligible_duplicate_hash_groups": manifest[
+                        "eligible_duplicate_hash_groups"
+                    ],
+                    "dropped_eligible_record_count": manifest[
+                        "dropped_eligible_record_count"
+                    ],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    except Exception as exc:
+        print(f"[ERROR] Exact-dedup {args.mode} failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def handle_materialize(args: argparse.Namespace) -> int:
     """Handle the 'materialize' subcommand.
 
@@ -892,6 +967,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional candidate corpus size for explicit no-oversampling feasibility checks.",
     )
 
+    # Subcommand: exact-dedup
+    exact_parser = subparsers.add_parser(
+        "exact-dedup",
+        help="Build or verify exact-dedup outputs, or run a small normalized-pool pilot.",
+    )
+    exact_parser.add_argument(
+        "mode",
+        choices=["run", "pilot", "verify"],
+        help="Production build, deterministic local pilot, or output verification.",
+    )
+    exact_parser.add_argument(
+        "--normalized-root",
+        type=Path,
+        default=Path("/mnt/data/cambacica-base-180m/normalized"),
+        help="Root containing the five immutable normalized source pools.",
+    )
+    exact_parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=DEFAULT_EXACT_ROOT,
+        help="Exact-dedup output directory (must not already exist).",
+    )
+    exact_parser.add_argument(
+        "--pilot-size",
+        type=int,
+        default=DEFAULT_PILOT_SIZE,
+        help="Target stratified pilot record count (pilot mode only).",
+    )
+    exact_parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_PILOT_SEED,
+        help="Fixed deterministic pilot seed (pilot mode only).",
+    )
+
     # Subcommand: materialize
     mat_parser = subparsers.add_parser(
         "materialize",
@@ -989,6 +1099,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_normalize(args)
     elif args.subcommand == "characterize":
         return handle_characterize(args)
+    elif args.subcommand == "exact-dedup":
+        return handle_exact_dedup(args)
     elif args.subcommand == "materialize":
         return handle_materialize(args)
     return 1

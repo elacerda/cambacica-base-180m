@@ -166,6 +166,13 @@ each configured GigaVerbo subset share. If a target is later supplied, the
 report states whether that target would require repeating a source pool. These
 are gross pre-deduplication capacities; post-deduplication volume is not
 estimated here. No candidate corpus is constructed here.
+Capacity floors use exact rational forms of the configured decimal shares.
+
+The downstream C1 order is frozen as `normalized → exact dedup → near dedup →
+benchmark decontamination → split → final A/B/C construction`. The exact stage
+contract is versioned in [`C1_EXACT_DEDUP_SPEC.md`](C1_EXACT_DEDUP_SPEC.md).
+Benchmark inventory and matching rules, near-dedup thresholds, split policy,
+and final mix selection remain later C1 decisions.
 
 ## Production commands
 

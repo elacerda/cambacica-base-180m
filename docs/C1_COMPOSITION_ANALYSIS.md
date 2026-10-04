@@ -430,53 +430,30 @@ de planejamento.
 
 ---
 
-## 8. Plano de Deduplicação e Decontaminação Global
+## 8. Ordem de deduplicação e preparação do C1
 
-O pipeline que transformará os dados normalizados nos manifests congelados do C1 seguirá uma sequência estritamente determinística e auditável:
+A ordem aprovada para os pools normalizados e a construção dos candidatos é:
 
-```
-[Fontes Primárias Normalizadas]
-              ↓
-(1) Normalização canônica (Unicode NFC, schema PyArrow, preservação de metadados)
-              ↓
-(2) Filtros de Língua e Integridade (LangID FastText, razão alfabética, poda de boilerplate)
-              ↓
-(3) Deduplicação Exata Global (SHA-256 canônico; primárias têm precedência sobre agregadores)
-              ↓
-(4) Deduplicação Aproximada Global (MinHash/LSH com janelas calibradas experimentalmente)
-              ↓
-(5) Decontaminação de Benchmarks (13-gram chars / 8-gram words contra test splits de avaliação)
-              ↓
-(6) Separação de Splits (Train 99.0% / Val 0.5% / Test 0.5% estritamente pós-dedup)
-              ↓
-[Manifesto Final Congelado]
+```text
+normalizados
+→ deduplicação exata
+→ deduplicação aproximada
+→ decontaminação de benchmarks
+→ split
+→ construção final de A/B/C
 ```
 
-### 8.1 Detalhamento Técnico das Etapas
+A especificação congelada da etapa exata é
+[`C1_EXACT_DEDUP_SPEC.md`](C1_EXACT_DEDUP_SPEC.md). Ela usa
+`content_sha256` dos registros normalizados completos, mantém todas as linhas
+de ParlamentoPT e registra cada linha descartada junto de sua representante.
 
-1. **Normalização Canônica**:
-   - Normalização Unicode para forma **NFC**.
-   - Preservação estrita das fronteiras de documentos (`\n\n`), impedindo a concatenação indiscriminada de parágrafos.
-   - Preservação de todos os metadados de auditoria (`source`, `source_revision`, `subset`, `original_id`, `variety`, `license`).
-2. **Filtros de Língua e Integridade**:
-   - Descarte de documentos quase-vazios (<100 caracteres ou <20 palavras), eliminando ruído em redes sociais (`dat`) e intervenções vazias de plenário.
-   - Poda de razão alfabética $< 60\%$ (`isalpha() / len(text)`).
-   - Validação de idioma por FastText (`lid.176.bin`), exigindo $p(\text{pt}) \ge 0,75$.
-   - Poda de documentos com $\ge 30\%$ de linhas redundantes (menus web repetidos).
-3. **Deduplicação Exata Global**:
-   - Hash SHA-256 sobre texto normalizado.
-   - **Regra de precedência estrita**: Se um hash coincidir entre uma fonte primária curada e um agregador (ex: Wikipédia vs. subconjunto `wikipedia` do GigaVerbo; ou Carolina vs. `finepdfs`), **a fonte primária é mantida e a cópia no agregador é descartada**, marcando-se `CROSS_SOURCE_EXACT_DROP`.
-   - No ParlamentoPT, fórmulas burocráticas recorrentes idênticas são colapsadas para uma única ocorrência de pretraining.
-4. **Deduplicação Aproximada Global (MinHash / LSH)**:
-   - Shingling por 5-gramas de palavras ($k=5$).
-   - 128 permutações MinHash com 16 bandas de 8 linhas ($b=16, r=8$, limiar teórico $\approx 0,707$).
-   - Limiares de Jaccard: **0,80** para pares entre fontes (*cross-source*) e **0,85** para pares internos (*within-source*). A fonte curada tem precedência sobre a fonte web residual.
-5. **Decontaminação de Benchmarks**:
-   - Confrontação exata de 13-gramas de caracteres e 8-gramas de palavras contra os conjuntos de avaliação congelados (BLiMP-PT, ENEM, FaQuAD, ASSIN 2, ARC-PT, MMLU-PT, HateBR).
-   - Textos contaminantes são purgados de todos os splits de treino sob o rótulo `BENCHMARK_CONTAMINATED`.
-6. **Divisão de Splits (Train / Validation / Test)**:
-   - Executada **estritamente após** a deduplicação global e a decontaminação.
-   - Particionamento determinístico por hash: **99,0% Treino**, **0,5% Validação** e **0,5% Teste**, estratificado por fonte.
+A deduplicação aproximada será calibrada em um piloto representativo. Nenhum
+limiar de Jaccard está congelado. A decontaminação de benchmarks permanece
+separada: inventário, matching e tratamento dos resultados ainda serão
+definidos antes dessa etapa. A divisão de splits e a construção final dos
+candidatos A/B/C acontecem depois dela. Este plano não congela proporções de
+split nem inventaria conjuntos de benchmark.
 
 ---
 

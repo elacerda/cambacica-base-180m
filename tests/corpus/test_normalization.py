@@ -655,6 +655,91 @@ def test_mix_capacity_uses_configured_source_and_gigaverbo_subset_shares():
     assert oversubscribed["oversampling_required_at_target"] is True
 
 
+def test_mix_capacity_uses_exact_decimal_floors_and_preserves_gross_limits():
+    config_root = Path(__file__).resolve().parents[2] / "configs"
+    mix_paths = [
+        config_root / "corpus_mix_a.yaml",
+        config_root / "corpus_mix_b.yaml",
+        config_root / "corpus_mix_c.yaml",
+    ]
+    subset_words = {
+        "blogset": 15_892_975,
+        "common_crawl": 584_947_339,
+        "crawlPT_dedup": 791_426_699,
+        "culturax": 16_942_627,
+        "finepdfs_por_Latn": 4_242_157_200,
+        "fineweb_2_pt": 5_692_906_792,
+        "hplt1_pt": 904_738_680,
+        "hplt2_pt": 4_451_301_378,
+        "mc4_pt": 2_493_372_382,
+        "oscar": 155_105_693,
+        "quati": 33_854_779,
+    }
+    reports = {
+        "carolina": {"metrics": {"normalized_words": 1_296_641_822}},
+        "wikipedia_pt": {"metrics": {"normalized_words": 413_147_060}},
+        "parlamento_pt": {"metrics": {"normalized_words": 396_693_229}},
+        "gutenberg_pt": {"metrics": {"normalized_words": 21_054_903}},
+        "gigaverbo_v2": {
+            "metrics": {"normalized_words": 19_382_646_544},
+            "subsets": {
+                subset: {"normalized_words": words}
+                for subset, words in subset_words.items()
+            },
+        },
+    }
+    capacities = _mix_capacities(reports, target_words=None, mix_paths=mix_paths)
+    assert (
+        capacities["corpus_mix_a"]["max_non_oversampled_total_normalized_words"]
+        == 263_186_287
+    )
+    assert (
+        capacities["corpus_mix_b"]["max_non_oversampled_total_normalized_words"]
+        == 526_372_575
+    )
+    assert (
+        capacities["corpus_mix_c"]["max_non_oversampled_total_normalized_words"]
+        == 423_812_666
+    )
+
+    # Binary float multiplication previously floored each of these one word low.
+    mix_b_subsets = capacities["corpus_mix_b"]["components"]["gigaverbo_v2"]["subsets"]
+    assert (
+        mix_b_subsets["crawlPT_dedup"]["subset_capacity_as_total_mix_words"]
+        == 19_785_667_475
+    )
+    assert mix_b_subsets["quati"]["subset_capacity_as_total_mix_words"] == 1_692_738_950
+    mix_c_subsets = capacities["corpus_mix_c"]["components"]["gigaverbo_v2"]["subsets"]
+    assert (
+        mix_c_subsets["hplt2_pt"]["subset_capacity_as_total_mix_words"]
+        == 118_701_370_080
+    )
+
+    exact_fit_reports = {
+        source: {"metrics": {"normalized_words": 1_000_000}}
+        for source in ("carolina", "wikipedia_pt", "parlamento_pt", "gutenberg_pt")
+    }
+    exact_fit_reports["gigaverbo_v2"] = {
+        "metrics": {"normalized_words": 1_000_000},
+        "subsets": {
+            subset: {"normalized_words": 1 if subset == "quati" else 1_000}
+            for subset in subset_words
+        },
+    }
+    exact_fit = _mix_capacities(
+        exact_fit_reports,
+        target_words=50,
+        mix_paths=[config_root / "corpus_mix_b.yaml"],
+    )["corpus_mix_b"]
+    assert exact_fit["oversampling_required_at_target"] is False
+    assert (
+        exact_fit["components"]["gigaverbo_v2"]["subsets"]["quati"][
+            "oversampling_required"
+        ]
+        is False
+    )
+
+
 def test_characterization_reports_partial_source_failures_without_claiming_capacity(
     tmp_path: Path,
 ):

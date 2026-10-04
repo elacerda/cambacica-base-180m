@@ -56,7 +56,7 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização de produção e caracterização do C1 concluídas; próximo estágio: contrato e implementação da deduplicação global.
+- normalização de produção e caracterização do C1 concluídas; etapa atual: implementação e piloto da deduplicação exata.
 
 ### Normalização e caracterização de produção do C1
 
@@ -64,15 +64,20 @@ Progresso atual:
 - normalização de produção **COMPLETE** e verificada para as cinco fontes no commit `ccf365279573bc5a443ac944785ece8e4f63fad2`;
 - caracterização **COMPLETE**; volume bruto total de **21.510.183.558 palavras normalizadas**;
 - capacidades máximas brutas, antes de deduplicação: A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`);
-- deduplicação ainda não executada; próxima atividade: fechar o contrato de deduplicação e então implementar a etapa;
+- contrato exato versionado em [`C1_EXACT_DEDUP_SPEC.md`](C1_EXACT_DEDUP_SPEC.md), versão 1.0.0;
+- implementação da deduplicação exata e piloto local concluídos e verificados; dados normalizados permanecem imutáveis;
+- deduplicação exata de produção: **NOT RUN / NEXT**;
+- near dedup: **PENDING**; limiares aguardam piloto representativo;
+- decontaminação de benchmarks: **PENDING**; inventário e regra de matching ainda não definidos;
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;
 - congelar políticas de idioma, qualidade e licença;
-- definir e executar deduplicação global;
-- definir decontaminação de benchmarks;
+- executar deduplicação exata de produção e verificar os outputs;
+- calibrar e executar near dedup após piloto representativo;
+- definir inventário e executar decontaminação de benchmarks;
 - comparar composições candidatas do corpus;
 - definir split train/validation/test reproduzível;
 - produzir manifests e estatísticas finais para a interface com C2.

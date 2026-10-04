@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 import csv
+from fractions import Fraction
 import json
 import math
 from pathlib import Path
@@ -301,30 +302,37 @@ def _mix_capacities(
         return round(required / available, 8)
 
     for config, path in zip(normalized_configs, mix_paths):
-        component_capacities: list[tuple[float, str, int, float]] = []
+        component_capacities: list[tuple[int, str, int, Fraction]] = []
         component_report: dict[str, Any] = {}
         for configured_source, source_config in config["sources"].items():
             source = source_key_map[configured_source]
             total_available = int(reports[source]["metrics"]["normalized_words"])
-            share = float(source_config["share"])
+            share = Fraction(str(source_config["share"]))
             if share <= 0:
                 continue
-            required_words = target_words * share if target_words is not None else None
-            source_capacity = math.floor(total_available / share)
+            required_words_exact = (
+                target_words * share if target_words is not None else None
+            )
+            required_words = (
+                float(required_words_exact)
+                if required_words_exact is not None
+                else None
+            )
+            source_capacity = total_available * share.denominator // share.numerator
             component_capacities.append(
                 (source_capacity, source, total_available, share)
             )
             component_report[source] = {
                 "available_normalized_words": total_available,
-                "candidate_share": share,
+                "candidate_share": float(share),
                 "source_capacity_as_total_mix_words": source_capacity,
                 "required_normalized_words": required_words,
                 "source_oversampling_factor": oversampling_factor(
                     required_words, total_available
                 ),
                 "source_oversampling_required": (
-                    total_available < required_words
-                    if required_words is not None
+                    Fraction(total_available, 1) < required_words_exact
+                    if required_words_exact is not None
                     else None
                 ),
             }
@@ -336,32 +344,40 @@ def _mix_capacities(
                         .get(subset, {})
                         .get("normalized_words", 0)
                     )
-                    subset_share = share * float(weight)
+                    subset_share = share * Fraction(str(weight))
                     if subset_share <= 0:
                         continue
-                    capacity = math.floor(available / subset_share)
-                    needed = (
+                    capacity = (
+                        available * subset_share.denominator // subset_share.numerator
+                    )
+                    needed_exact = (
                         target_words * subset_share
                         if target_words is not None
                         else None
                     )
+                    needed = float(needed_exact) if needed_exact is not None else None
                     component_capacities.append(
                         (capacity, f"{source}/{subset}", available, subset_share)
                     )
-                    component_report.setdefault("subsets", {})[subset] = {
+                    component_report[source].setdefault("subsets", {})[subset] = {
                         "available_normalized_words": available,
-                        "share_of_total_mix": subset_share,
+                        "share_of_total_mix": float(subset_share),
                         "subset_capacity_as_total_mix_words": capacity,
                         "required_normalized_words": needed,
                         "oversampling_factor": oversampling_factor(needed, available),
                         "oversampling_required": (
-                            available < needed if needed is not None else None
+                            Fraction(available, 1) < needed_exact
+                            if needed_exact is not None
+                            else None
                         ),
                     }
         bottleneck = min(component_capacities, key=lambda item: item[0])
         max_words = bottleneck[0]
         oversampling = (
-            any(item[2] < target_words * item[3] for item in component_capacities)
+            any(
+                Fraction(item[2], 1) < target_words * item[3]
+                for item in component_capacities
+            )
             if target_words is not None
             else None
         )
