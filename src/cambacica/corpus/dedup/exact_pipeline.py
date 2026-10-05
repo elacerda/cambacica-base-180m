@@ -34,7 +34,9 @@ from cambacica.corpus.normalization import (
 )
 
 
-EXACT_DEDUP_VERSION = "1.0.0"
+EXACT_DEDUP_VERSION = "1.0.1"
+OCCURRENCE_IDENTITY_VERSION = "occurrence-id-v2"
+PILOT_ORDINAL_COLUMN = "_exact_occurrence_ordinal"
 DEFAULT_EXACT_ROOT = Path("/mnt/data/cambacica-base-180m/deduplicated/exact")
 DEFAULT_PILOT_SIZE = 1_200
 DEFAULT_PILOT_SEED = 20261004
@@ -86,6 +88,12 @@ RESOLUTION_SCHEMA = pa.schema(
         pa.field("disposition", pa.string(), nullable=False),
         pa.field("ownership_rule", pa.string(), nullable=False),
         pa.field("selection_role", pa.string()),
+        pa.field("source_revision", pa.string()),
+        pa.field("original_id", pa.string()),
+        pa.field("_gv2_upstream_shard", pa.string()),
+        pa.field("_gv2_upstream_row_group", pa.int32()),
+        pa.field("_gv2_upstream_commit", pa.string()),
+        pa.field("normalized_row_ordinal", pa.int64(), nullable=False),
     ]
 )
 EDGE_SCHEMA = pa.schema(
@@ -134,6 +142,7 @@ PILOT_INDEX_SCHEMA = pa.schema(
         pa.field("_gv2_upstream_commit", pa.string()),
         pa.field("normalized_words", pa.int64(), nullable=False),
         pa.field("normalized_shard", pa.string(), nullable=False),
+        pa.field("normalized_row_ordinal", pa.int64(), nullable=False),
         pa.field("raw_source_file", pa.string(), nullable=False),
         pa.field("raw_record_identifier", pa.string(), nullable=False),
         pa.field("selection_role", pa.string(), nullable=False),
@@ -199,26 +208,32 @@ class _ParquetSink:
         self.closed = True
 
 
-def stable_record_id(row: Mapping[str, Any]) -> str:
-    """Return the stable identity digest for one normalized source record."""
+def occurrence_id_v2(source: str, normalized_shard: str, row_ordinal: int) -> str:
+    """Return the deterministic ID for a row position in a frozen shard."""
+    if not source or not normalized_shard:
+        raise ValueError("Occurrence identity requires source and normalized shard.")
+    if row_ordinal < 0:
+        raise ValueError("Occurrence row ordinal must be zero or greater.")
     identity = {
-        key: row.get(key)
-        for key in (
-            "source",
-            "source_revision",
-            "subset",
-            "original_id",
-            "raw_source_file",
-            "raw_record_identifier",
-            "_gv2_upstream_shard",
-            "_gv2_upstream_row_group",
-            "_gv2_upstream_commit",
-        )
+        "source": source,
+        "normalized_shard": normalized_shard,
+        "row_ordinal": row_ordinal,
     }
     payload = json.dumps(
         identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
-    return hashlib.sha256(b"cambacica-exact-record-v1\0" + payload).hexdigest()
+    return hashlib.sha256(b"cambacica-occurrence-id-v2\0" + payload).hexdigest()
+
+
+def _row_ordinal(row: Mapping[str, Any], shard_position: int) -> int:
+    """Use a pilot's preserved source ordinal or the current shard position."""
+    value = row.get(PILOT_ORDINAL_COLUMN, shard_position)
+    if value is None:
+        raise ValueError(f"Missing {PILOT_ORDINAL_COLUMN} in pilot input.")
+    ordinal = int(value)
+    if ordinal < 0:
+        raise ValueError(f"Invalid normalized row ordinal: {ordinal}")
+    return ordinal
 
 
 def exact_cluster_id(content_sha256: str) -> str:
@@ -284,6 +299,7 @@ def _create_index_db(connection: sqlite3.Connection) -> None:
             raw_source_file TEXT NOT NULL,
             raw_record_identifier TEXT NOT NULL,
             normalized_shard TEXT NOT NULL,
+            normalized_row_ordinal INTEGER NOT NULL,
             gv_upstream_shard TEXT,
             gv_upstream_row_group INTEGER,
             gv_upstream_commit TEXT,
@@ -310,9 +326,9 @@ def _insert_index_rows(
         INSERT INTO records (
             record_id, content_sha256, source, subset, source_revision,
             original_id, raw_source_file, raw_record_identifier,
-            normalized_shard, gv_upstream_shard, gv_upstream_row_group,
+            normalized_shard, normalized_row_ordinal, gv_upstream_shard, gv_upstream_row_group,
             gv_upstream_commit, selection_role, sort_kind, subset_tier
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     connection.executemany(insert, rows)
     return len(rows)
@@ -337,7 +353,10 @@ def _index_files(
         columns = list(INDEX_COLUMNS)
         if "pilot_selection_role" in names:
             columns.append("pilot_selection_role")
+        if PILOT_ORDINAL_COLUMN in names:
+            columns.append(PILOT_ORDINAL_COLUMN)
         indexed: list[tuple[Any, ...]] = []
+        shard_position = 0
         for batch in parquet.iter_batches(batch_size=batch_size, columns=columns):
             for row in batch.to_pylist():
                 source = str(row.get("source") or "")
@@ -356,7 +375,11 @@ def _index_files(
                 for field in ("raw_source_file", "raw_record_identifier"):
                     if not row.get(field):
                         raise ValueError(f"Missing {field} in {item.path}")
-                record_id = stable_record_id(row)
+                row_ordinal = _row_ordinal(row, shard_position)
+                shard_position += 1
+                record_id = occurrence_id_v2(
+                    item.source, item.normalized_shard, row_ordinal
+                )
                 role = row.get("pilot_selection_role") or item.selection_role
                 key = _ownership_key(source, subset, record_id)
                 indexed.append(
@@ -370,6 +393,7 @@ def _index_files(
                         str(row["raw_source_file"]),
                         str(row["raw_record_identifier"]),
                         item.normalized_shard,
+                        row_ordinal,
                         row.get("_gv2_upstream_shard"),
                         row.get("_gv2_upstream_row_group"),
                         row.get("_gv2_upstream_commit"),
@@ -585,6 +609,8 @@ def _materialize_and_count(
         read_columns = list(MATERIALIZE_COLUMNS)
         if "pilot_selection_role" in file_names:
             read_columns.append("pilot_selection_role")
+        if PILOT_ORDINAL_COLUMN in file_names:
+            read_columns.append(PILOT_ORDINAL_COLUMN)
         relative = PurePosixPath(item.relative_path)
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"Unsafe normalized shard path: {item.relative_path}")
@@ -594,6 +620,7 @@ def _materialize_and_count(
         writer: pq.ParquetWriter | None = None
         kept_rows: list[dict[str, Any]] = []
         kept_text_bytes = 0
+        shard_position = 0
 
         def flush_kept_rows() -> None:
             nonlocal writer, kept_text_bytes
@@ -618,7 +645,11 @@ def _materialize_and_count(
 
         for batch in parquet.iter_batches(batch_size=batch_size, columns=read_columns):
             for row in batch.to_pylist():
-                record_id = stable_record_id(row)
+                row_ordinal = _row_ordinal(row, shard_position)
+                shard_position += 1
+                record_id = occurrence_id_v2(
+                    item.source, item.normalized_shard, row_ordinal
+                )
                 found = lookup.execute(
                     "SELECT representative_record_id, disposition FROM records WHERE record_id=?",
                     (record_id,),
@@ -704,7 +735,8 @@ def _write_resolution_files(
                normalized_words, normalized_shard, raw_source_file,
                raw_record_identifier, representative_record_id, disposition,
                ownership_rule, selection_role, source_revision, original_id,
-               gv_upstream_shard, gv_upstream_row_group, gv_upstream_commit
+               gv_upstream_shard, gv_upstream_row_group, gv_upstream_commit,
+               normalized_row_ordinal
         FROM records ORDER BY source, subset, record_id
         """
     )
@@ -734,6 +766,7 @@ def _write_resolution_files(
                     "_gv2_upstream_commit": row[17],
                     "normalized_words": row[5],
                     "normalized_shard": row[6],
+                    "normalized_row_ordinal": row[18],
                     "raw_source_file": row[7],
                     "raw_record_identifier": row[8],
                     "selection_role": row[12] or "stratified",
@@ -942,6 +975,220 @@ def _input_catalog(
     )
 
 
+UPSTREAM_IDENTITY_FIELDS = (
+    "source",
+    "source_revision",
+    "subset",
+    "original_id",
+    "raw_source_file",
+    "raw_record_identifier",
+    "_gv2_upstream_shard",
+    "_gv2_upstream_row_group",
+    "_gv2_upstream_commit",
+)
+
+
+def _upstream_identity_digest(row: Mapping[str, Any]) -> bytes:
+    identity = {key: row.get(key) for key in UPSTREAM_IDENTITY_FIELDS}
+    payload = json.dumps(
+        identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(b"cambacica-upstream-identity-v1\0" + payload).digest()
+
+
+def audit_occurrence_ids(
+    *,
+    normalized_root: Path | str = DEFAULT_NORMALIZED_ROOT,
+    scratch_dir: Path | str | None = None,
+    include_upstream_identity_diagnostic: bool = True,
+) -> dict[str, Any]:
+    """Audit v2 occurrence IDs over projected metadata without reading text."""
+    root = Path(normalized_root).resolve()
+    manifests, input_files = _input_catalog(root)
+    scratch_parent = Path(scratch_dir).resolve() if scratch_dir else None
+    if scratch_parent is not None:
+        scratch_parent.mkdir(parents=True, exist_ok=True)
+        if scratch_parent == root or root in scratch_parent.parents:
+            raise ValueError(
+                "Occurrence audit scratch must be outside normalized pools."
+            )
+    scratch = Path(
+        tempfile.mkdtemp(
+            prefix="cambacica-occurrence-id-audit-",
+            dir=scratch_parent,
+        )
+    )
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = _sqlite_connect(scratch / "occurrences.sqlite3")
+        connection.execute(
+            "CREATE TABLE occurrence_ids (record_id BLOB PRIMARY KEY) WITHOUT ROWID"
+        )
+        if include_upstream_identity_diagnostic:
+            connection.execute(
+                """
+                CREATE TABLE upstream_identities (
+                    identity_id BLOB PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    subset TEXT NOT NULL,
+                    record_count INTEGER NOT NULL,
+                    first_content_sha256 TEXT NOT NULL,
+                    multiple_content_hashes INTEGER NOT NULL
+                ) WITHOUT ROWID
+                """
+            )
+        connection.commit()
+
+        source_counts: Counter[str] = Counter()
+        collisions = 0
+        input_total = 0
+        id_batch: list[tuple[bytes]] = []
+        upstream_batch: list[tuple[Any, ...]] = []
+
+        def flush() -> None:
+            nonlocal collisions
+            if id_batch:
+                before = connection.total_changes
+                connection.executemany(
+                    "INSERT OR IGNORE INTO occurrence_ids(record_id) VALUES (?)",
+                    id_batch,
+                )
+                collisions += len(id_batch) - (connection.total_changes - before)
+                id_batch.clear()
+            if upstream_batch:
+                connection.executemany(
+                    """
+                    INSERT INTO upstream_identities (
+                        identity_id, source, subset, record_count,
+                        first_content_sha256, multiple_content_hashes
+                    ) VALUES (?, ?, ?, 1, ?, 0)
+                    ON CONFLICT(identity_id) DO UPDATE SET
+                        record_count=record_count+1,
+                        multiple_content_hashes=MAX(
+                            multiple_content_hashes,
+                            first_content_sha256<>excluded.first_content_sha256
+                        )
+                    """,
+                    upstream_batch,
+                )
+                upstream_batch.clear()
+            connection.commit()
+
+        for item in input_files:
+            parquet = pq.ParquetFile(item.path)
+            shard_position = 0
+            for batch in parquet.iter_batches(batch_size=4_096, columns=INDEX_COLUMNS):
+                for row in batch.to_pylist():
+                    source = str(row.get("source") or "")
+                    if source != item.source:
+                        raise ValueError(
+                            f"Source column mismatch in {item.path}: {source!r} != {item.source!r}"
+                        )
+                    content_hash = str(row.get("content_sha256") or "")
+                    if len(content_hash) != 64 or any(
+                        char not in "0123456789abcdef" for char in content_hash
+                    ):
+                        raise ValueError(
+                            f"Invalid content_sha256 at {item.path}: {content_hash!r}"
+                        )
+                    record_id = occurrence_id_v2(
+                        item.source, item.normalized_shard, shard_position
+                    )
+                    shard_position += 1
+                    source_counts[source] += 1
+                    input_total += 1
+                    id_batch.append((bytes.fromhex(record_id),))
+                    if include_upstream_identity_diagnostic:
+                        upstream_batch.append(
+                            (
+                                _upstream_identity_digest(row),
+                                source,
+                                str(row.get("subset") or ""),
+                                content_hash,
+                            )
+                        )
+                    if len(id_batch) >= 4_096:
+                        flush()
+            expected_rows = int(
+                next(
+                    entry["documents"]
+                    for entry in manifests[item.source]["normalized_files"]
+                    if entry["relative_path"] == item.relative_path
+                )
+            )
+            if shard_position != expected_rows:
+                raise ValueError(
+                    f"Occurrence audit row count mismatch for {item.normalized_shard}: "
+                    f"{shard_position} != {expected_rows}"
+                )
+        flush()
+
+        unique_count = int(
+            connection.execute("SELECT COUNT(*) FROM occurrence_ids").fetchone()[0]
+        )
+        result: dict[str, Any] = {
+            "occurrence_identity_version": OCCURRENCE_IDENTITY_VERSION,
+            "normalized_root": str(root),
+            "total_occurrence_ids": input_total,
+            "unique_occurrence_ids": unique_count,
+            "collisions": collisions,
+            "per_source_counts": dict(sorted(source_counts.items())),
+            "projected_columns": [*INDEX_COLUMNS],
+            "text_read": False,
+        }
+
+        if include_upstream_identity_diagnostic:
+            summary = connection.execute(
+                "SELECT COUNT(*), COALESCE(SUM(record_count), 0), "
+                "COALESCE(SUM(record_count-1), 0), "
+                "COALESCE(SUM(multiple_content_hashes), 0) "
+                "FROM upstream_identities WHERE record_count>1"
+            ).fetchone()
+            breakdown = {
+                f"{source}/{subset}": {
+                    "repeated_identity_groups": int(groups),
+                    "records_participating": int(records),
+                    "surplus_occurrences": int(surplus),
+                    "groups_with_multiple_content_hashes": int(multiple_hashes),
+                }
+                for source, subset, groups, records, surplus, multiple_hashes in connection.execute(
+                    "SELECT source, subset, COUNT(*), SUM(record_count), "
+                    "SUM(record_count-1), SUM(multiple_content_hashes) "
+                    "FROM upstream_identities WHERE record_count>1 "
+                    "GROUP BY source, subset ORDER BY source, subset"
+                )
+            }
+            source_breakdown: dict[str, dict[str, int]] = {}
+            for key, counts in breakdown.items():
+                source, _subset = key.split("/", 1)
+                totals = source_breakdown.setdefault(
+                    source,
+                    {
+                        "repeated_identity_groups": 0,
+                        "records_participating": 0,
+                        "surplus_occurrences": 0,
+                        "groups_with_multiple_content_hashes": 0,
+                    },
+                )
+                for field, value in counts.items():
+                    totals[field] += value
+            result["upstream_identity_diagnostic"] = {
+                "identity_fields": list(UPSTREAM_IDENTITY_FIELDS),
+                "repeated_identity_groups": int(summary[0]),
+                "records_participating": int(summary[1]),
+                "surplus_occurrences": int(summary[2]),
+                "groups_with_multiple_content_hashes": int(summary[3]),
+                "can_repeat_with_multiple_content_hashes": int(summary[3]) > 0,
+                "by_source": dict(sorted(source_breakdown.items())),
+                "by_source_subset": breakdown,
+            }
+        return result
+    finally:
+        if connection is not None:
+            connection.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def _input_manifest_identity(
     manifests: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
@@ -985,6 +1232,7 @@ def _stage_output(
         tempfile.mkdtemp(prefix=f".{output_root.name}.partial-", dir=output_root.parent)
     )
     db_path = stage / "index.sqlite3"
+    connection: sqlite3.Connection | None = None
     try:
         connection = _sqlite_connect(db_path)
         _create_index_db(connection)
@@ -1013,12 +1261,14 @@ def _stage_output(
         accounting_rows = _write_accounting(connection, stage, source_counts)
         pilot_report = _pilot_report(connection) if run_type == "pilot" else None
         connection.close()
+        connection = None
         db_path.unlink(missing_ok=True)
 
         files = _file_inventory(stage)
         manifest: dict[str, Any] = {
             "schema_version": 1,
             "exact_dedup_version": EXACT_DEDUP_VERSION,
+            "occurrence_identity_version": OCCURRENCE_IDENTITY_VERSION,
             "status": "COMPLETE",
             "run_type": run_type,
             "normalization_version": NORMALIZATION_VERSION,
@@ -1060,10 +1310,9 @@ def _stage_output(
             os.close(parent_fd)
         return manifest
     except BaseException:
-        try:
-            shutil.rmtree(stage)
-        except OSError:
-            pass
+        if connection is not None:
+            connection.close()
+        shutil.rmtree(stage, ignore_errors=True)
         raise
 
 
@@ -1322,6 +1571,10 @@ def _scan_pilot_row_groups(
         parquet = pq.ParquetFile(item.path)
         columns = list(INDEX_COLUMNS) + ["text"]
         row_index = 0
+        shard_row_offset = sum(
+            int(parquet.metadata.row_group(index).num_rows)
+            for index in range(row_group)
+        )
         pending: list[tuple[Any, ...]] = []
         for batch in parquet.iter_batches(
             row_groups=[row_group], batch_size=batch_size, columns=columns
@@ -1337,7 +1590,10 @@ def _scan_pilot_row_groups(
                 band = (
                     "short" if words < 20 else "long" if words >= 100_000 else "medium"
                 )
-                record_id = stable_record_id(row)
+                row_ordinal = shard_row_offset + row_index
+                record_id = occurrence_id_v2(
+                    item.source, item.normalized_shard, row_ordinal
+                )
                 normalized_shard = item.normalized_shard
                 pending.append(
                     (
@@ -1527,8 +1783,12 @@ def _write_pilot_inputs(
         temporary = destination.with_name(f"{destination.name}.partial")
         writer: pq.ParquetWriter | None = None
         row_index = 0
-        selected_records: set[str] = set()
         source_parquet = pq.ParquetFile(item.path)
+        shard_row_offset = sum(
+            int(source_parquet.metadata.row_group(index).num_rows)
+            for index in range(row_group)
+        )
+        selected_records: set[str] = set()
         columns = MATERIALIZE_COLUMNS
         for batch in source_parquet.iter_batches(
             row_groups=[row_group], batch_size=64, columns=columns
@@ -1536,18 +1796,22 @@ def _write_pilot_inputs(
             picked: list[dict[str, Any]] = []
             for row in batch.to_pylist():
                 if row_index in wanted_rows:
-                    row_id = stable_record_id(row)
+                    row_ordinal = shard_row_offset + row_index
+                    row_id = occurrence_id_v2(
+                        item.source, item.normalized_shard, row_ordinal
+                    )
                     role = selected_role[row_id]
                     selected_records.add(row_id)
                     enriched_row = dict(row)
                     enriched_row["pilot_selection_role"] = role
+                    enriched_row[PILOT_ORDINAL_COLUMN] = row_ordinal
                     picked.append(enriched_row)
                 row_index += 1
             if picked:
                 if writer is None:
                     sample_schema = NORMALIZED_SCHEMA.append(
                         pa.field("pilot_selection_role", pa.string(), nullable=False)
-                    )
+                    ).append(pa.field(PILOT_ORDINAL_COLUMN, pa.int64(), nullable=False))
                     writer = pq.ParquetWriter(
                         temporary,
                         sample_schema,
@@ -1720,12 +1984,20 @@ def _verify_expected_inputs(
         for batch in parquet.iter_batches(batch_size=4_096):
             for row in batch.to_pylist():
                 record_id = row["record_id"]
-                if stable_record_id(row) != record_id:
+                expected_id = occurrence_id_v2(
+                    row["source"],
+                    row["normalized_shard"],
+                    int(row["normalized_row_ordinal"]),
+                )
+                if expected_id != record_id:
                     raise ValueError(
                         f"Pilot input record identity mismatch for {record_id}"
                     )
                 found = lookup.execute(
                     "SELECT content_sha256, source, subset, selection_role "
+                    ", normalized_shard, normalized_row_ordinal, source_revision, "
+                    "original_id, raw_source_file, raw_record_identifier, "
+                    "gv_upstream_shard, gv_upstream_row_group, gv_upstream_commit "
                     "FROM resolution WHERE record_id=?",
                     (record_id,),
                 ).fetchone()
@@ -1734,6 +2006,15 @@ def _verify_expected_inputs(
                     row["source"],
                     row["subset"],
                     row["selection_role"],
+                    row["normalized_shard"],
+                    int(row["normalized_row_ordinal"]),
+                    row["source_revision"],
+                    row["original_id"],
+                    row["raw_source_file"],
+                    row["raw_record_identifier"],
+                    row["_gv2_upstream_shard"],
+                    row["_gv2_upstream_row_group"],
+                    row["_gv2_upstream_commit"],
                 ):
                     raise ValueError(
                         f"Pilot input index mapping mismatch for {record_id}"
@@ -1744,16 +2025,38 @@ def _verify_expected_inputs(
         _manifests, input_files = _input_catalog(normalized_root)
         for item in input_files:
             parquet = pq.ParquetFile(item.path)
+            shard_position = 0
             for batch in parquet.iter_batches(batch_size=4_096, columns=INDEX_COLUMNS):
                 for row in batch.to_pylist():
-                    record_id = stable_record_id(row)
+                    row_ordinal = shard_position
+                    shard_position += 1
+                    record_id = occurrence_id_v2(
+                        item.source, item.normalized_shard, row_ordinal
+                    )
                     found = lookup.execute(
-                        "SELECT content_sha256, source, subset FROM resolution WHERE record_id=?",
+                        "SELECT content_sha256, source, subset, normalized_shard, "
+                        "normalized_row_ordinal, source_revision, original_id, "
+                        "raw_source_file, raw_record_identifier, gv_upstream_shard, "
+                        "gv_upstream_row_group, gv_upstream_commit "
+                        "FROM resolution WHERE record_id=?",
                         (record_id,),
                     ).fetchone()
                     source = row["source"]
                     subset = str(row.get("subset") or "")
-                    if found != (row["content_sha256"], source, subset):
+                    if found != (
+                        row["content_sha256"],
+                        source,
+                        subset,
+                        item.normalized_shard,
+                        row_ordinal,
+                        row.get("source_revision"),
+                        row.get("original_id"),
+                        row["raw_source_file"],
+                        row["raw_record_identifier"],
+                        row.get("_gv2_upstream_shard"),
+                        row.get("_gv2_upstream_row_group"),
+                        row.get("_gv2_upstream_commit"),
+                    ):
                         raise ValueError(
                             f"Input-to-resolution mapping mismatch for {record_id}"
                         )
@@ -1789,6 +2092,8 @@ def verify_exact_dedup(
         )
     if manifest.get("exact_dedup_version") != EXACT_DEDUP_VERSION:
         errors.append("Exact-dedup contract version mismatch.")
+    if manifest.get("occurrence_identity_version") != OCCURRENCE_IDENTITY_VERSION:
+        errors.append("Occurrence-identity version mismatch.")
     try:
         current_manifests, _ = _input_catalog(normalized)
         current_identity = _input_manifest_identity(current_manifests)
@@ -1849,14 +2154,20 @@ def verify_exact_dedup(
                 content_sha256 TEXT NOT NULL,
                 source TEXT NOT NULL,
                 subset TEXT NOT NULL,
-                normalized_words INTEGER NOT NULL,
-                normalized_shard TEXT NOT NULL,
-                raw_source_file TEXT NOT NULL,
-                raw_record_identifier TEXT NOT NULL,
-                representative_record_id TEXT NOT NULL,
-                disposition TEXT NOT NULL,
-                ownership_rule TEXT NOT NULL,
-                selection_role TEXT
+            normalized_words INTEGER NOT NULL,
+            normalized_shard TEXT NOT NULL,
+            raw_source_file TEXT NOT NULL,
+            raw_record_identifier TEXT NOT NULL,
+            representative_record_id TEXT NOT NULL,
+            disposition TEXT NOT NULL,
+            ownership_rule TEXT NOT NULL,
+            selection_role TEXT,
+            source_revision TEXT,
+            original_id TEXT,
+            gv_upstream_shard TEXT,
+            gv_upstream_row_group INTEGER,
+            gv_upstream_commit TEXT,
+            normalized_row_ordinal INTEGER NOT NULL
             );
             CREATE INDEX resolution_hash ON resolution(content_sha256);
             CREATE TABLE edges (
@@ -1878,7 +2189,9 @@ def verify_exact_dedup(
         for batch in pq.ParquetFile(resolution_path).iter_batches(batch_size=4_096):
             records = batch.to_pylist()
             connection.executemany(
-                "INSERT INTO resolution VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO resolution VALUES ("
+                + ",".join("?" for _ in RESOLUTION_SCHEMA.names)
+                + ")",
                 [_resolution_row_to_tuple(row) for row in records],
             )
         edge_path = root / "duplicate_edges.parquet"
@@ -1990,13 +2303,52 @@ def verify_exact_dedup(
             if (root / "data").exists()
             else []
         ):
+            normalized_shard = data_path.relative_to(root / "data").as_posix()
+            expected_rows = iter(
+                connection.execute(
+                    "SELECT record_id, content_sha256, source, subset, "
+                    "source_revision, original_id, raw_source_file, "
+                    "raw_record_identifier, gv_upstream_shard, "
+                    "gv_upstream_row_group, gv_upstream_commit "
+                    "FROM resolution WHERE normalized_shard=? "
+                    "AND disposition<>'dropped' ORDER BY normalized_row_ordinal",
+                    (normalized_shard,),
+                )
+            )
             parquet = pq.ParquetFile(data_path)
             for batch in parquet.iter_batches(batch_size=4_096, columns=INDEX_COLUMNS):
                 for row in batch.to_pylist():
+                    expected = next(expected_rows, None)
+                    if expected is None:
+                        raise ValueError(
+                            f"Materialized file has extra rows: {normalized_shard}"
+                        )
+                    expected_record_id = expected[0]
+                    actual_metadata = (
+                        row["content_sha256"],
+                        row["source"],
+                        str(row.get("subset") or ""),
+                        row.get("source_revision"),
+                        row.get("original_id"),
+                        row["raw_source_file"],
+                        row["raw_record_identifier"],
+                        row.get("_gv2_upstream_shard"),
+                        row.get("_gv2_upstream_row_group"),
+                        row.get("_gv2_upstream_commit"),
+                    )
+                    if actual_metadata != expected[1:]:
+                        raise ValueError(
+                            "Materialized row provenance differs from its retained "
+                            f"resolution: {expected_record_id}"
+                        )
                     connection.execute(
                         "INSERT INTO materialized(record_id) VALUES (?)",
-                        (stable_record_id(row),),
+                        (expected_record_id,),
                     )
+            if next(expected_rows, None) is not None:
+                raise ValueError(
+                    f"Materialized file omits retained rows: {normalized_shard}"
+                )
         connection.commit()
         missing_materialized = connection.execute(
             "SELECT COUNT(*) FROM resolution r LEFT JOIN materialized m USING(record_id) "

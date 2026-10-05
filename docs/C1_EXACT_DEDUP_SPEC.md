@@ -1,6 +1,6 @@
 # Gate C1 Exact Deduplication Contract
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** frozen
 **Gate:** C1 — IN PROGRESS
 
@@ -11,14 +11,31 @@ stage.
 
 ## Identity and record units
 
-The identity key is the existing normalized `content_sha256`, defined by
-[`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md). Eligible dedup units
-are one complete Gutenberg PT book, one pinned-snapshot Wikipedia PT article,
-one source-native Corpus Carolina TEI document, and one GigaVerbo residual row.
-Each normalized input row receives a stable `record_id` from its source,
-revision, subset, original ID, raw source file and raw record identifier, plus
-GigaVerbo provenance where available. The SHA-256 of that canonical identity
-is independent of Parquet traversal order.
+These three identities serve different purposes:
+
+- **Normalized occurrence identity:** `record_id` uses identity version
+  `occurrence-id-v2`, a namespaced SHA-256 over `source`, `normalized_shard`,
+  and the zero-based row ordinal within that immutable normalized Parquet
+  shard. The ordinal is continuous across Parquet batches and row groups. It
+  resets for each shard, so IDs do not depend on traversal order across files.
+  The frozen normalized artifact and its manifest define the shard boundary;
+  no extra manifest key is needed in the occurrence hash.
+- **Upstream/source identity:** `original_id`, `raw_record_identifier`, raw
+  source file, source revision, and available upstream shard/row-group/commit
+  fields remain provenance. They are preserved in resolution mappings and do
+  not identify a unique normalized occurrence. The GigaVerbo `common_crawl`
+  row-group materialization `subset=common_crawl/train-00007-of-00056__row-group-00028.parquet`
+  contains 4,192 rows, where `original_id` /
+  `raw_record_identifier` `78c9db87c96264dc24a941dfeb0c8ed4` occurs 214 times.
+  This is repeated upstream metadata, not a SHA-256 collision.
+- **Content identity:** normalized `content_sha256`, defined by
+  [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), determines exact
+  duplicate membership. It is never used as occurrence identity.
+
+Eligible dedup units are one complete Gutenberg PT book, one pinned-snapshot
+Wikipedia PT article, one source-native Corpus Carolina TEI document, and one
+GigaVerbo residual row. Exact membership is based only on equal
+`content_sha256` values.
 
 ParlamentoPT is diagnostic-only. Every row is retained and resolves to itself.
 Repeated ParlamentoPT hashes are summarized in
@@ -35,14 +52,14 @@ ordered policy:
    article copies, Carolina ownership over exact complete-record copies, and
    Gutenberg ownership over exact complete-book copies.
 2. If several native records share a hash, order by source name, subset, then
-   stable `record_id`.
+   occurrence `record_id`.
 3. Within GigaVerbo, use the documented C1 provenance buckets in order:
    `finepdfs_por_Latn`; curated/native web (`crawlPT_dedup`, `quati`,
    `blogset`); modern general web (`fineweb_2_pt`); legacy web (`mc4_pt`,
    `hplt2_pt`, `hplt1_pt`, `common_crawl`, `oscar`, `culturax`). Then order by
-   subset name and stable `record_id`. Unlisted future subsets sort after the
+   subset name and occurrence `record_id`. Unlisted future subsets sort after the
    documented buckets by subset name and identity.
-4. Any other eligible source uses source name, subset, and stable `record_id`.
+4. Any other eligible source uses source name, subset, and occurrence `record_id`.
 
 Retained rows keep their original source and subset. A dropped row maps to
 exactly one retained record in `record_resolution.parquet` and has one
@@ -113,8 +130,10 @@ python3 -m cambacica.corpus exact-dedup verify \
   --output-root /mnt/data/cambacica-base-180m/deduplicated/exact
 ```
 
-This command is documented for the later production action; it was not run
-while implementing or validating this contract.
+This command is reserved for the later production action. The first manual
+attempt failed during compact indexing because upstream identity fields were
+not occurrence-unique; it published no output and is not a completed production
+run. No production exact-dedup run was made while validating this v1.0.1 fix.
 
 ## Deferred C1 order
 

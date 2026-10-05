@@ -56,7 +56,9 @@ def _row(source: str, subset: str, text: str, record: str) -> dict:
     return row
 
 
-def _fixture_documents(*, include_length_bands: bool = False) -> dict[str, list[dict]]:
+def _fixture_documents(
+    *, include_length_bands: bool = False, include_repeated_upstream_ids: bool = False
+) -> dict[str, list[dict]]:
     docs: dict[str, list[dict]] = {source: [] for source in SOURCE_CONFIG}
     docs["gutenberg_pt"].extend(
         [
@@ -209,11 +211,49 @@ def _fixture_documents(*, include_length_bands: bool = False) -> dict[str, list[
                         f"unique-{subset}",
                     )
                 )
+    if include_repeated_upstream_ids:
+        docs["gigaverbo_v2"].extend(
+            [
+                _row(
+                    "gigaverbo_v2",
+                    "common_crawl",
+                    "Repeated upstream identity exact text.",
+                    "gv-upstream-repeat-exact",
+                ),
+                _row(
+                    "gigaverbo_v2",
+                    "common_crawl",
+                    "Repeated upstream identity exact text.",
+                    "gv-upstream-repeat-exact",
+                ),
+                _row(
+                    "gigaverbo_v2",
+                    "common_crawl",
+                    "Repeated upstream identity with content A.",
+                    "gv-upstream-repeat-content",
+                ),
+                _row(
+                    "gigaverbo_v2",
+                    "common_crawl",
+                    "Repeated upstream identity with content B.",
+                    "gv-upstream-repeat-content",
+                ),
+            ]
+        )
     return docs
 
 
-def _write_normalized_root(root: Path, *, include_length_bands: bool = False) -> None:
-    documents = _fixture_documents(include_length_bands=include_length_bands)
+def _write_normalized_root(
+    root: Path,
+    *,
+    include_length_bands: bool = False,
+    include_repeated_upstream_ids: bool = False,
+    row_group_size: int | None = None,
+) -> None:
+    documents = _fixture_documents(
+        include_length_bands=include_length_bands,
+        include_repeated_upstream_ids=include_repeated_upstream_ids,
+    )
     for source, source_config in SOURCE_CONFIG.items():
         source_dir = root / source_config["output_dir"]
         source_dir.mkdir(parents=True, exist_ok=True)
@@ -231,7 +271,13 @@ def _write_normalized_root(root: Path, *, include_length_bands: bool = False) ->
             path = source_dir / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             table = pa.Table.from_pylist(file_rows, schema=NORMALIZED_SCHEMA)
-            pq.write_table(table, path, compression="zstd", version="2.6")
+            pq.write_table(
+                table,
+                path,
+                compression="zstd",
+                version="2.6",
+                row_group_size=row_group_size,
+            )
             texts = [row["text"] for row in file_rows]
             entries.append(
                 {
@@ -350,9 +396,172 @@ def test_exact_dedup_ownership_accounting_and_verifier(tmp_path: Path):
     )
 
 
+def test_repeated_upstream_identity_keeps_distinct_occurrences_and_groups_by_content(
+    tmp_path: Path,
+):
+    normalized_root = tmp_path / "normalized"
+    _write_normalized_root(
+        normalized_root,
+        include_repeated_upstream_ids=True,
+        row_group_size=1,
+    )
+    output_root = tmp_path / "exact"
+    manifest = exact.build_exact_dedup(
+        normalized_root=normalized_root, output_root=output_root
+    )
+    resolution = _read_resolution(output_root / "record_resolution.parquet")
+
+    exact_repeats = [
+        row for row in resolution if row["original_id"] == "gv-upstream-repeat-exact"
+    ]
+    assert len(exact_repeats) == 2
+    assert len({row["record_id"] for row in exact_repeats}) == 2
+    assert len({row["content_sha256"] for row in exact_repeats}) == 1
+    assert {row["cluster_id"] for row in exact_repeats} == {
+        exact.exact_cluster_id(exact_repeats[0]["content_sha256"])
+    }
+    assert sorted(row["disposition"] for row in exact_repeats) == [
+        "dropped",
+        "retained",
+    ]
+    assert len({row["normalized_row_ordinal"] for row in exact_repeats}) == 2
+    assert all(
+        row["record_id"]
+        == exact.occurrence_id_v2(
+            row["source"], row["normalized_shard"], row["normalized_row_ordinal"]
+        )
+        for row in exact_repeats
+    )
+
+    content_repeats = [
+        row for row in resolution if row["original_id"] == "gv-upstream-repeat-content"
+    ]
+    assert len(content_repeats) == 2
+    assert len({row["record_id"] for row in content_repeats}) == 2
+    assert len({row["content_sha256"] for row in content_repeats}) == 2
+    assert all(row["disposition"] == "retained" for row in content_repeats)
+    assert {row["cluster_id"] for row in content_repeats} == {
+        exact.exact_cluster_id(row["content_sha256"]) for row in content_repeats
+    }
+
+    provenance_fields = (
+        "source_revision",
+        "original_id",
+        "raw_source_file",
+        "raw_record_identifier",
+        "_gv2_upstream_shard",
+        "_gv2_upstream_row_group",
+        "_gv2_upstream_commit",
+        "normalized_shard",
+    )
+    for rows in (exact_repeats, content_repeats):
+        assert all(
+            len({row[field] for row in rows}) == 1 for field in provenance_fields
+        )
+
+    common_crawl_path = (
+        normalized_root
+        / SOURCE_CONFIG["gigaverbo_v2"]["output_dir"]
+        / "subset=common_crawl"
+        / "part-00000.parquet"
+    )
+    common_crawl_parquet = pq.ParquetFile(common_crawl_path)
+    assert common_crawl_parquet.metadata.num_row_groups > 1
+    common_crawl_rows = common_crawl_parquet.read(columns=["original_id"]).to_pylist()
+    ordinals = sorted(
+        row["normalized_row_ordinal"]
+        for row in resolution
+        if row["normalized_shard"]
+        == "gigaverbo_v2/subset=common_crawl/part-00000.parquet"
+    )
+    assert ordinals == list(range(len(common_crawl_rows)))
+    assert manifest["occurrence_identity_version"] == "occurrence-id-v2"
+    assert (
+        exact.verify_exact_dedup(
+            normalized_root=normalized_root, output_root=output_root
+        )
+        == []
+    )
+
+    audit = exact.audit_occurrence_ids(normalized_root=normalized_root)
+    assert audit["text_read"] is False
+    assert audit["total_occurrence_ids"] == audit["unique_occurrence_ids"]
+    assert audit["collisions"] == 0
+    assert audit["upstream_identity_diagnostic"]["repeated_identity_groups"] == 2
+    assert audit["upstream_identity_diagnostic"]["records_participating"] == 4
+    assert audit["upstream_identity_diagnostic"]["surplus_occurrences"] == 2
+    assert (
+        audit["upstream_identity_diagnostic"]["groups_with_multiple_content_hashes"]
+        == 1
+    )
+    assert audit["upstream_identity_diagnostic"][
+        "can_repeat_with_multiple_content_hashes"
+    ]
+    assert (
+        audit["upstream_identity_diagnostic"]["by_source_subset"][
+            "gigaverbo_v2/common_crawl"
+        ]["repeated_identity_groups"]
+        == 2
+    )
+
+
+def test_occurrence_ids_are_batch_independent_in_index_and_materialization(
+    tmp_path: Path,
+):
+    normalized_root = tmp_path / "normalized"
+    _write_normalized_root(
+        normalized_root,
+        include_repeated_upstream_ids=True,
+        row_group_size=1,
+    )
+    _manifests, input_files = exact._input_catalog(normalized_root)
+    item = next(
+        item
+        for item in input_files
+        if item.normalized_shard
+        == "gigaverbo_v2/subset=common_crawl/part-00000.parquet"
+    )
+
+    indexed_ids = []
+    for batch_size in (1, 3, 8):
+        connection = exact._sqlite_connect(tmp_path / f"index-{batch_size}.sqlite3")
+        exact._create_index_db(connection)
+        exact._index_files(connection, [item], batch_size=batch_size)
+        indexed_ids.append(
+            connection.execute(
+                "SELECT normalized_row_ordinal, record_id FROM records "
+                "ORDER BY normalized_row_ordinal"
+            ).fetchall()
+        )
+        connection.close()
+    assert indexed_ids[0] == indexed_ids[1] == indexed_ids[2]
+
+    connection = exact._sqlite_connect(tmp_path / "materialize.sqlite3")
+    exact._create_index_db(connection)
+    exact._index_files(connection, [item], batch_size=1)
+    connection.execute(
+        "UPDATE records SET representative_record_id=record_id, disposition='retained'"
+    )
+    connection.commit()
+    materialized_counts = []
+    for batch_size in (1, 5):
+        stage = tmp_path / f"materialized-{batch_size}"
+        stage.mkdir()
+        counts, paths = exact._materialize_and_count(
+            connection, [item], stage, batch_size=batch_size
+        )
+        materialized_counts.append(counts)
+        assert len(paths) == 1
+        assert pq.ParquetFile(paths[0]).metadata.num_rows == len(indexed_ids[0])
+    assert materialized_counts[0] == materialized_counts[1]
+    connection.close()
+
+
 def test_output_artifacts_are_independent_of_input_file_traversal_order(tmp_path: Path):
     normalized_root = tmp_path / "normalized"
-    _write_normalized_root(normalized_root)
+    _write_normalized_root(
+        normalized_root, include_repeated_upstream_ids=True, row_group_size=2
+    )
     manifests, input_files = exact._input_catalog(normalized_root)
     first = exact._stage_output(
         normalized_root=normalized_root,
@@ -420,7 +629,11 @@ def test_interrupted_build_never_publishes_partial_output(tmp_path: Path, monkey
 
 def test_pilot_is_deterministic_stratified_and_verifyable(tmp_path: Path):
     normalized_root = tmp_path / "normalized"
-    _write_normalized_root(normalized_root, include_length_bands=True)
+    _write_normalized_root(
+        normalized_root,
+        include_length_bands=True,
+        include_repeated_upstream_ids=True,
+    )
     first_root = tmp_path / "pilot-a"
     second_root = tmp_path / "pilot-b"
     first = exact.run_exact_dedup_pilot(
@@ -458,6 +671,13 @@ def test_pilot_is_deterministic_stratified_and_verifyable(tmp_path: Path):
         ]["documents_removed"]
         == 0
     )
+    pilot_index = pq.read_table(first_root / "pilot_input_index.parquet").to_pylist()
+    repeated_upstream = [
+        row for row in pilot_index if row["original_id"] == "gv-upstream-repeat-exact"
+    ]
+    assert len(repeated_upstream) == 2
+    assert len({row["record_id"] for row in repeated_upstream}) == 2
+    assert len({row["normalized_row_ordinal"] for row in repeated_upstream}) == 2
     assert (
         exact.verify_exact_dedup(
             normalized_root=normalized_root, output_root=first_root

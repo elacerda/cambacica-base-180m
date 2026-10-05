@@ -19,6 +19,7 @@ from cambacica.corpus.dedup.exact_pipeline import (
     DEFAULT_EXACT_ROOT,
     DEFAULT_PILOT_SEED,
     DEFAULT_PILOT_SIZE,
+    audit_occurrence_ids,
     build_exact_dedup,
     run_exact_dedup_pilot,
     verify_exact_dedup,
@@ -546,8 +547,21 @@ def handle_characterize(args: argparse.Namespace) -> int:
 
 
 def handle_exact_dedup(args: argparse.Namespace) -> int:
-    """Build, verify, or run the bounded Gate C1 exact-dedup pilot."""
+    """Build, verify, audit, or run the bounded Gate C1 exact-dedup pilot."""
     try:
+        if args.mode == "audit-identities":
+            report = audit_occurrence_ids(
+                normalized_root=args.normalized_root,
+                scratch_dir=args.audit_scratch_dir,
+                include_upstream_identity_diagnostic=(
+                    not args.skip_upstream_identity_diagnostic
+                ),
+            )
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+            return int(
+                report["collisions"] != 0
+                or report["total_occurrence_ids"] != report["unique_occurrence_ids"]
+            )
         if args.mode == "verify":
             errors = verify_exact_dedup(
                 normalized_root=args.normalized_root,
@@ -974,8 +988,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     exact_parser.add_argument(
         "mode",
-        choices=["run", "pilot", "verify"],
-        help="Production build, deterministic local pilot, or output verification.",
+        choices=["run", "pilot", "verify", "audit-identities"],
+        help=(
+            "Production build, deterministic pilot, output verification, or "
+            "metadata-only occurrence identity audit."
+        ),
     )
     exact_parser.add_argument(
         "--normalized-root",
@@ -1000,6 +1017,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_PILOT_SEED,
         help="Fixed deterministic pilot seed (pilot mode only).",
+    )
+    exact_parser.add_argument(
+        "--audit-scratch-dir",
+        type=Path,
+        default=None,
+        help="Optional scratch location for the metadata-only identity audit.",
+    )
+    exact_parser.add_argument(
+        "--skip-upstream-identity-diagnostic",
+        action="store_true",
+        help="Skip the repeated upstream/provenance identity summary.",
     )
 
     # Subcommand: materialize
