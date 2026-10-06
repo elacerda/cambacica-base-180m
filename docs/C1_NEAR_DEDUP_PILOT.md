@@ -7,6 +7,8 @@
 **Exact manifest SHA-256:** `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`
 **Output:** `/mnt/data/cambacica-base-180m/dedup-pilots/near-v1/`
 
+**Provenance correction:** D2 started at `19cab41c43b6d11595a028fa4678c20d8e83631c`, whose parent is `6e5346d37e240e18933290ad42a8f9349444ea43`. The prior audit's `19cab413f982998ad6b7c75a40b39be82728442a` is not a Git object in this history; it was a reporting typo.
+
 The pilot reads only the exact-deduplicated corpus. It does not delete or
 rewrite any production row. All 176 sampled ParlamentoPT records remain in the
 pilot, and none is marked removable. The exact input manifest and every pilot

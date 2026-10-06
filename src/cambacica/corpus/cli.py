@@ -34,6 +34,11 @@ from cambacica.corpus.dedup.near_pilot import (
     DEFAULT_NEAR_PILOT_SEED,
     run_near_dedup_pilot,
 )
+from cambacica.corpus.dedup.near_calibration import (
+    DEFAULT_BASE_PILOT_ROOT,
+    DEFAULT_CALIBRATION_ROOT,
+    run_near_dedup_calibration,
+)
 from cambacica.corpus.metrics import format_report_text, inspect_sample_file
 from cambacica.corpus.sources import SAMPLER_REGISTRY
 from cambacica.corpus.sources.base import ensure_user_hf_cache
@@ -666,6 +671,44 @@ def handle_near_dedup_pilot(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_near_dedup_calibration(args: argparse.Namespace) -> int:
+    """Run targeted D2b calibration without changing corpus rows."""
+    try:
+        manifest = run_near_dedup_calibration(
+            input_root=args.input_root,
+            base_pilot_root=args.base_pilot_root,
+            output_root=args.output_root,
+            seed=args.seed,
+        )
+        print(
+            json.dumps(
+                {
+                    "output_root": str(args.output_root),
+                    "status": manifest["status"],
+                    "input_exact_manifest_sha256": manifest[
+                        "input_exact_manifest_sha256"
+                    ],
+                    "calibration_records": (
+                        manifest["sampling_design"]["D2_base_records"]
+                        + manifest["sampling_design"]["targeted_family_records"]
+                    ),
+                    "gold_exhaustive_pairs": manifest["gold_subset"][
+                        "exhaustive_pair_count"
+                    ],
+                    "near_dedup_production": manifest["production"][
+                        "near_dedup_production"
+                    ],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    except Exception as exc:
+        print(f"[ERROR] Near-dedup calibration failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def handle_materialize(args: argparse.Namespace) -> int:
     """Handle the 'materialize' subcommand.
 
@@ -1093,6 +1136,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fixed deterministic pilot seed.",
     )
 
+    near_calibration_parser = subparsers.add_parser(
+        "near-dedup-calibration",
+        help="Run targeted D2b scientific near-dedup calibration.",
+    )
+    near_calibration_parser.add_argument(
+        "--input-root",
+        type=Path,
+        default=DEFAULT_EXACT_DATA_ROOT,
+        help="Exact-deduplicated corpus root; source rows are read-only.",
+    )
+    near_calibration_parser.add_argument(
+        "--base-pilot-root",
+        type=Path,
+        default=DEFAULT_BASE_PILOT_ROOT,
+        help="Completed D2 pilot artifacts used as the starting calibration panel.",
+    )
+    near_calibration_parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=DEFAULT_CALIBRATION_ROOT,
+        help="New separate output directory; existing outputs are never overwritten.",
+    )
+    near_calibration_parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_NEAR_PILOT_SEED,
+        help="Fixed deterministic family and review selection seed.",
+    )
+
     # Subcommand: materialize
     mat_parser = subparsers.add_parser(
         "materialize",
@@ -1194,6 +1266,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_exact_dedup(args)
     elif args.subcommand == "near-dedup-pilot":
         return handle_near_dedup_pilot(args)
+    elif args.subcommand == "near-dedup-calibration":
+        return handle_near_dedup_calibration(args)
     elif args.subcommand == "materialize":
         return handle_materialize(args)
     return 1
