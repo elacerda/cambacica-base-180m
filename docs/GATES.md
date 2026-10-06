@@ -56,7 +56,7 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização e caracterização concluídas; deduplicação exata de produção (versão 1.0.1) e verificação concluídas com sucesso e auditadas; próxima ação: piloto de near dedup.
+- normalização e caracterização concluídas; deduplicação exata de produção (versão 1.0.1) e verificação concluídas com sucesso e auditadas; piloto representativo de near dedup (D2) concluído, produção ainda não executada.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -70,8 +70,8 @@ Progresso atual:
 - palavras normalizadas: 21.510.183.558 antes, 21.470.091.017 depois (40.092.541 removidas);
 - frações de perda exata: perda documental de 0,2113% (0,00211257); perda de palavras de 0,1864% (0,00186389);
 - capacidades máximas pós-exato (propostas A/B/C): A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`), inalteradas em relação ao pré-exato;
-- próxima ação: piloto de near dedup;
-- near dedup: **PENDING**; limiares aguardam piloto representativo;
+- piloto representativo de near dedup (D2): **COMPLETE**, resultados registrados em [`C1_NEAR_DEDUP_PILOT.md`](C1_NEAR_DEDUP_PILOT.md) e artefatos em `/mnt/data/cambacica-base-180m/dedup-pilots/near-v1/`;
+- near dedup de produção: **NOT RUN**; limiar e política de ownership permanecem sem congelamento até revisão do piloto;
 - decontaminação de benchmarks: **PENDING**; inventário e regra de matching ainda não definidos;
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
@@ -79,7 +79,7 @@ Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;
 - congelar políticas de idioma, qualidade e licença;
-- calibrar e executar near dedup após piloto representativo;
+- revisar o piloto D2, congelar um contrato de near dedup e depois executar a produção;
 - definir inventário e executar decontaminação de benchmarks;
 - comparar composições candidatas do corpus;
 - definir split train/validation/test reproduzível;

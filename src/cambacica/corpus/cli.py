@@ -28,6 +28,12 @@ from cambacica.corpus.dedup.minhash import (
     MinHashConfig,
     find_minhash_near_duplicates,
 )
+from cambacica.corpus.dedup.near_pilot import (
+    DEFAULT_EXACT_DATA_ROOT,
+    DEFAULT_NEAR_PILOT_ROOT,
+    DEFAULT_NEAR_PILOT_SEED,
+    run_near_dedup_pilot,
+)
 from cambacica.corpus.metrics import format_report_text, inspect_sample_file
 from cambacica.corpus.sources import SAMPLER_REGISTRY
 from cambacica.corpus.sources.base import ensure_user_hf_cache
@@ -626,6 +632,40 @@ def handle_exact_dedup(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_near_dedup_pilot(args: argparse.Namespace) -> int:
+    """Run the non-destructive Gate C1 near-dedup pilot."""
+    try:
+        manifest = run_near_dedup_pilot(
+            input_root=args.input_root,
+            output_root=args.output_root,
+            seed=args.seed,
+        )
+        print(
+            json.dumps(
+                {
+                    "output_root": str(args.output_root),
+                    "status": manifest["status"],
+                    "input_exact_manifest_sha256": manifest[
+                        "input_exact_manifest_sha256"
+                    ],
+                    "sample_records": manifest["resource_report"][
+                        "sample_record_count"
+                    ],
+                    "review_pairs": manifest["review_validation"]["review_pair_count"],
+                    "near_dedup_production": manifest["production"][
+                        "near_dedup_production"
+                    ],
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    except Exception as exc:
+        print(f"[ERROR] Near-dedup pilot failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def handle_materialize(args: argparse.Namespace) -> int:
     """Handle the 'materialize' subcommand.
 
@@ -1030,6 +1070,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip the repeated upstream/provenance identity summary.",
     )
 
+    near_pilot_parser = subparsers.add_parser(
+        "near-dedup-pilot",
+        help="Run a deterministic representative near-dedup pilot on exact/data.",
+    )
+    near_pilot_parser.add_argument(
+        "--input-root",
+        type=Path,
+        default=DEFAULT_EXACT_DATA_ROOT,
+        help="Exact-deduplicated corpus root or its data/ directory; never the normalized pool.",
+    )
+    near_pilot_parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=DEFAULT_NEAR_PILOT_ROOT,
+        help="Separate pilot output directory; existing outputs are never overwritten.",
+    )
+    near_pilot_parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_NEAR_PILOT_SEED,
+        help="Fixed deterministic pilot seed.",
+    )
+
     # Subcommand: materialize
     mat_parser = subparsers.add_parser(
         "materialize",
@@ -1129,6 +1192,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_characterize(args)
     elif args.subcommand == "exact-dedup":
         return handle_exact_dedup(args)
+    elif args.subcommand == "near-dedup-pilot":
+        return handle_near_dedup_pilot(args)
     elif args.subcommand == "materialize":
         return handle_materialize(args)
     return 1
