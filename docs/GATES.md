@@ -72,6 +72,8 @@ Progresso atual:
 - capacidades máximas pós-exato (propostas A/B/C): A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`), inalteradas em relação ao pré-exato;
 - piloto representativo de near dedup (D2): **COMPLETE**, resultados registrados em [`C1_NEAR_DEDUP_PILOT.md`](C1_NEAR_DEDUP_PILOT.md) e artefatos em `/mnt/data/cambacica-base-180m/dedup-pilots/near-v1/`;
 - calibração científica targeted (D2b): **COMPLETE**, resultados em [`C1_NEAR_DEDUP_CALIBRATION.md`](C1_NEAR_DEDUP_CALIBRATION.md) e artefatos fora do repositório em `/tmp/cambacica-base-180m/dedup-pilots/near-calibration-v1/`;
+- implementação do censo near de corpus completo (D2c): **COMPLETE**, smoke census e verificação validados; runbook em [`C1_NEAR_DUP_CENSUS_D2C.md`](C1_NEAR_DUP_CENSUS_D2C.md);
+- execução do censo completo: **NOT RUN / NEXT**, a executar manualmente após revisão da implementação;
 - near dedup de produção: **NOT RUN**; contrato, limiar e política de ownership ainda não estão prontos para congelamento;
 - decontaminação de benchmarks: **PENDING**; inventário e regra de matching ainda não definidos;
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
@@ -80,7 +82,8 @@ Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;
 - congelar políticas de idioma, qualidade e licença;
-- revisar os resultados D2/D2b, congelar um contrato de near dedup e depois executar a produção;
+- revisar os resultados D2/D2b e o censo D2c completo; decidir entre near dedup global, política limitada ou pular a near dedup global;
+- executar produção de near dedup somente se a decisão e uma regra segura forem sustentadas pelos resultados;
 - definir inventário e executar decontaminação de benchmarks;
 - comparar composições candidatas do corpus;
 - definir split train/validation/test reproduzível;

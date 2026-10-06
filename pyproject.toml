@@ -18,6 +18,9 @@ dependencies = [
     "datasets>=2.16.0",
 ]
 
+[project.scripts]
+near-census = "cambacica.corpus.dedup.near_census:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
