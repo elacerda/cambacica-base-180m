@@ -56,18 +56,21 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização de produção e caracterização do C1 concluídas; implementação e piloto da deduplicação exata corrigidos para `occurrence-id-v2` e validados; preflight completo aprovou 21.649.425 IDs únicos e zero colisões; próxima ação: execução manual de produção.
+- normalização e caracterização concluídas; deduplicação exata de produção (versão 1.0.1) e verificação concluídas com sucesso e auditadas; próxima ação: piloto de near dedup.
 
-### Normalização e caracterização de produção do C1
+### Normalização, caracterização e deduplicação exata do C1
 
-- contrato congelado: [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0;
+- contrato de normalização congelado: [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0;
 - normalização de produção **COMPLETE** e verificada para as cinco fontes no commit `ccf365279573bc5a443ac944785ece8e4f63fad2`;
 - caracterização **COMPLETE**; volume bruto total de **21.510.183.558 palavras normalizadas**;
-- capacidades máximas brutas, antes de deduplicação: A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`);
 - contrato exato versionado em [`C1_EXACT_DEDUP_SPEC.md`](C1_EXACT_DEDUP_SPEC.md), versão 1.0.1;
-- implementação da deduplicação exata e piloto local corrigidos para IDs de ocorrência e validados; dados normalizados permanecem imutáveis;
-- a primeira tentativa manual de deduplicação exata de produção falhou durante a indexação e não publicou outputs; ela não conta como execução de produção concluída;
-- deduplicação exata de produção: **NOT RUN / NEXT**;
+- deduplicação exata de produção: **COMPLETE** (versão de implementação 1.0.1);
+- verificação da deduplicação exata: **PASS**;
+- contagens de registros: 21.649.425 de entrada, 21.603.689 retidos, 45.736 descartados elegíveis (33.748 grupos de duplicatas exatas);
+- palavras normalizadas: 21.510.183.558 antes, 21.470.091.017 depois (40.092.541 removidas);
+- frações de perda exata: perda documental de 0,2113% (0,00211257); perda de palavras de 0,1864% (0,00186389);
+- capacidades máximas pós-exato (propostas A/B/C): A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`), inalteradas em relação ao pré-exato;
+- próxima ação: piloto de near dedup;
 - near dedup: **PENDING**; limiares aguardam piloto representativo;
 - decontaminação de benchmarks: **PENDING**; inventário e regra de matching ainda não definidos;
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
@@ -76,7 +79,6 @@ Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;
 - congelar políticas de idioma, qualidade e licença;
-- executar deduplicação exata de produção e verificar os outputs;
 - calibrar e executar near dedup após piloto representativo;
 - definir inventário e executar decontaminação de benchmarks;
 - comparar composições candidatas do corpus;

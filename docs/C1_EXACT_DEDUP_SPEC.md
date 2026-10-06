@@ -135,6 +135,20 @@ attempt failed during compact indexing because upstream identity fields were
 not occurrence-unique; it published no output and is not a completed production
 run. No production exact-dedup run was made while validating this v1.0.1 fix.
 
+### Production execution note
+
+Production exact deduplication and verification completed successfully using
+implementation version 1.0.1 (`occurrence-id-v2`). Verification passed all
+invariants:
+- Input records: 21,649,425
+- Retained records: 21,603,689
+- Dropped eligible records: 45,736 (33,748 duplicate hash groups)
+- Normalized words before: 21,510,183,558; after: 21,470,091,017 (40,092,541 removed)
+- Exact document loss: 0.2113%; word loss: 0.1864%
+- ParlamentoPT: 2,670,846 records preserved diagnostic; 0 dropped
+- Manifest SHA-256: `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`
+
+
 ## Deferred C1 order
 
 The required downstream order is:
