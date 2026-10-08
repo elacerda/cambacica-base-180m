@@ -198,26 +198,188 @@ def test_bucket_member_cap_counts_without_unbounded_collection() -> None:
 
 
 def test_external_exact_scoring_matches_in_memory_result(tmp_path: Path) -> None:
-    text_a = " ".join(f"termo{index}" for index in range(1_200))
-    text_b = text_a + " termo_extra"
-    expected = census._exact_pair_metrics(
+    tokens = [f"termo{index}" for index in range(1_200)]
+    text_a = " ".join(tokens)
+    text_b = " ".join(tokens[400:480])
+    expected = census.near.exact_jaccard_from_text(
         text_a,
         text_b,
-        tmp_path,
-        expected_words_a=1_200,
-        expected_words_b=1_201,
+        ngram_size=5,
+        seed=census.SIGNATURE_CONFIG.seed,
     )
-    external = census._exact_pair_metrics(
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    in_memory = census._exact_pair_metrics(
         text_a,
         text_b,
-        tmp_path,
-        expected_words_a=300_001,
-        expected_words_b=300_002,
+        scratch,
+        expected_words_a=len(tokens),
+        expected_words_b=80,
     )
+    external = census._external_exact_pair_metrics(text_a, text_b, scratch)
+    assert in_memory["exact_scoring_method"] == "in_memory_set"
+    assert in_memory["exact_jaccard"] == expected["exact_jaccard"]
+    assert in_memory["shared_shingles"] == expected["shared_shingles"]
     assert external["exact_scoring_method"] == "external_sort"
     assert external["exact_jaccard"] == expected["exact_jaccard"]
+    assert external["unique_shingles_a"] == expected["unique_shingles_a"]
+    assert external["unique_shingles_b"] == expected["unique_shingles_b"]
     assert external["shared_shingles"] == expected["shared_shingles"]
-    assert external["containment_a_in_b"] == expected["containment_a_in_b"]
+    assert external["union_shingles"] == expected["union_shingles"]
+    assert external["containment_a_in_b"] == (
+        expected["shared_shingles"] / expected["unique_shingles_a"]
+    )
+    assert external["containment_b_in_a"] == (
+        expected["shared_shingles"] / expected["unique_shingles_b"]
+    )
+    assert external["containment_smaller_in_larger"] == expected["containment"]
+    assert external["unique_shingles_a"] > 10 * external["unique_shingles_b"]
+    dispatched_external = census._exact_pair_metrics(
+        text_a,
+        text_b,
+        scratch,
+        expected_words_a=census.EXACT_MEMORY_SHINGLE_LIMIT + 1,
+        expected_words_b=census.EXACT_MEMORY_SHINGLE_LIMIT + 1,
+    )
+    assert dispatched_external == external
+    assert list(scratch.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "reverse", [False, True], ids=["a-exhausts-first", "b-exhausts-first"]
+)
+def test_external_intersection_closes_both_iterators_on_early_exhaustion(
+    tmp_path: Path, monkeypatch, reverse: bool
+) -> None:
+    tokens = [f"token{index}" for index in range(500)]
+    long_text = " ".join(tokens)
+    short_text = " ".join(tokens[180:230])
+    text_a, text_b = (short_text, long_text) if reverse else (long_text, short_text)
+    original_iter = census._iter_u64_file
+    closed_paths: list[Path] = []
+
+    def tracked_iter(path: Path):
+        try:
+            yield from original_iter(path)
+        finally:
+            closed_paths.append(path)
+
+    monkeypatch.setattr(census, "_iter_u64_file", tracked_iter)
+    monkeypatch.setattr(census, "EXTERNAL_SORT_SHINGLE_BATCH", 17)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    result = census._external_exact_pair_metrics(text_a, text_b, scratch)
+
+    assert result["exact_scoring_method"] == "external_sort"
+    assert [path.name for path in closed_paths].count("a-unique.u64") == 1
+    assert [path.name for path in closed_paths].count("b-unique.u64") == 1
+    assert list(scratch.iterdir()) == []
+
+
+def test_external_merge_closes_subordinate_generators_after_write_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    original_iter = census._iter_u64_file
+    closed_paths: list[Path] = []
+    runs = []
+    for index, values in enumerate(([1, 3, 5], [2, 4, 6])):
+        path = tmp_path / f"input-{index}.u64"
+        path.write_bytes(b"".join(struct.pack("<Q", value) for value in values))
+        runs.append(path)
+
+    def tracked_iter(path: Path):
+        try:
+            yield from original_iter(path)
+        finally:
+            closed_paths.append(path)
+
+    def fail_pack(*_args, **_kwargs):
+        raise RuntimeError("simulated output failure")
+
+    monkeypatch.setattr(census, "_iter_u64_file", tracked_iter)
+    monkeypatch.setattr(census.struct, "pack", fail_pack)
+    with pytest.raises(RuntimeError, match="simulated output failure"):
+        census._merge_unique_runs(runs, tmp_path / "output.u64")
+    assert set(closed_paths) == set(runs)
+
+
+def test_external_pair_scratch_is_removed_after_merge_exception(
+    tmp_path: Path, monkeypatch
+) -> None:
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    original_iter = census._iter_u64_file
+    closed_paths: list[Path] = []
+
+    def tracked_iter(path: Path):
+        try:
+            yield from original_iter(path)
+        finally:
+            closed_paths.append(path)
+
+    def fail_pack(*_args, **_kwargs):
+        raise RuntimeError("simulated merge failure")
+
+    monkeypatch.setattr(census, "_iter_u64_file", tracked_iter)
+    monkeypatch.setattr(census.struct, "pack", fail_pack)
+    with pytest.raises(RuntimeError, match="simulated merge failure"):
+        census._external_exact_pair_metrics(
+            _fixture_text(), _fixture_text("Cópia: "), scratch
+        )
+    assert closed_paths
+    assert all("run-" in path.name for path in closed_paths)
+    assert list(scratch.iterdir()) == []
+
+
+def test_repeated_external_pair_scoring_does_not_leak_file_descriptors(
+    tmp_path: Path,
+) -> None:
+    fd_root = Path("/proc/self/fd")
+    if not fd_root.is_dir():
+        pytest.skip("/proc/self/fd is unavailable")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    text_a = _fixture_text()
+    text_b = _fixture_text("Cópia: ")
+    before = len(list(fd_root.iterdir()))
+    for _ in range(12):
+        census._external_exact_pair_metrics(text_a, text_b, scratch)
+    after = len(list(fd_root.iterdir()))
+    assert after <= before + 1
+    assert list(scratch.iterdir()) == []
+
+
+def test_exact_scratch_root_is_configurable_and_protected(tmp_path: Path) -> None:
+    configured = tmp_path / "configured-scratch"
+    args = census._cli().parse_args(["exact-sample", "--scratch-root", str(configured)])
+    assert args.scratch_root == configured
+    assert (
+        census._prepare_exact_scratch_root(
+            configured,
+            protected_paths=(tmp_path / "input", tmp_path / "output"),
+        )
+        == configured.resolve()
+    )
+    with pytest.raises(ValueError, match="overlaps protected path"):
+        census._prepare_exact_scratch_root(
+            tmp_path / "output" / "nested-scratch",
+            protected_paths=(tmp_path / "input", tmp_path / "output"),
+        )
+
+
+def test_exact_scratch_setup_failure_does_not_fall_back(
+    tmp_path: Path, monkeypatch
+) -> None:
+    def fail_scratch_setup(*_args, **_kwargs):
+        raise OSError("simulated local scratch failure")
+
+    monkeypatch.setattr(census.tempfile, "TemporaryDirectory", fail_scratch_setup)
+    with pytest.raises(OSError, match="simulated local scratch failure"):
+        census._prepare_exact_scratch_root(
+            tmp_path / "scratch",
+            protected_paths=(tmp_path / "input", tmp_path / "output"),
+        )
 
 
 def test_external_sort_bounds_merge_fan_in(tmp_path: Path) -> None:
@@ -385,11 +547,15 @@ def test_small_census_smoke_all_stages_and_restart(tmp_path: Path, monkeypatch) 
         output_root / "candidate_summary" / "candidate_counts_by_pair.csv"
     ).is_file()
 
+    scratch_root = tmp_path / "exact-scratch"
     exact_sample = census.run_exact_sample(
         input_root=exact_root,
         output_root=output_root,
+        scratch_root=scratch_root,
         expected_manifest_sha256=None,
     )
+    assert scratch_root.is_dir()
+    assert list(scratch_root.iterdir()) == []
     assert exact_sample["exact_scored_pair_count"] >= 2
     scored = pq.read_table(
         output_root / "candidate_samples" / "exact_scored_sample.parquet"
@@ -427,6 +593,87 @@ def test_small_census_smoke_all_stages_and_restart(tmp_path: Path, monkeypatch) 
         == 0
     )
     assert compute_file_sha256(exact_root / "manifest.json") == exact_sha
+
+
+def test_exact_sample_retry_reuses_completed_stages_after_scoring_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    exact_root, _exact_sha = _write_exact_fixture(tmp_path)
+    output_root = tmp_path / "retry-census"
+    scratch_root = tmp_path / "retry-scratch"
+    census.run_fingerprints(
+        input_root=exact_root,
+        output_root=output_root,
+        expected_manifest_sha256=None,
+        expected_record_count=None,
+        batch_size=2,
+    )
+    census.run_lsh_index(
+        input_root=exact_root,
+        output_root=output_root,
+        expected_manifest_sha256=None,
+        expected_record_count=None,
+    )
+    census.run_candidates(
+        input_root=exact_root,
+        output_root=output_root,
+        expected_manifest_sha256=None,
+    )
+    census.run_summarize(
+        input_root=exact_root,
+        output_root=output_root,
+        expected_manifest_sha256=None,
+    )
+    protected_files = [
+        output_root / "signatures" / "manifest.json",
+        output_root / "signatures" / "fingerprints.parquet",
+        output_root / "lsh" / "index" / "manifest.json",
+        output_root / "lsh" / "candidates" / "manifest.json",
+        output_root / "lsh" / "candidates" / "candidate_index.sqlite3",
+        output_root / "candidate_summary" / "manifest.json",
+    ]
+    original_hashes = {path: compute_file_sha256(path) for path in protected_files}
+
+    def fail_scoring(*_args, **_kwargs):
+        raise RuntimeError("simulated exact scoring failure")
+
+    monkeypatch.setattr(census, "_exact_pair_metrics", fail_scoring)
+    with pytest.raises(RuntimeError, match="simulated exact scoring failure"):
+        census.run_exact_sample(
+            input_root=exact_root,
+            output_root=output_root,
+            scratch_root=scratch_root,
+            expected_manifest_sha256=None,
+        )
+    partials = list(output_root.glob(".candidate_samples.partial-*"))
+    assert len(partials) == 1
+    assert not (partials[0] / ".selected_texts.sqlite3").exists()
+    assert scratch_root.is_dir()
+    assert list(scratch_root.iterdir()) == []
+    assert {
+        path: compute_file_sha256(path) for path in protected_files
+    } == original_hashes
+
+    monkeypatch.undo()
+    result = census.run_exact_sample(
+        input_root=exact_root,
+        output_root=output_root,
+        scratch_root=scratch_root,
+        expected_manifest_sha256=None,
+    )
+    assert result["exact_scored_pair_count"] >= 2
+    assert not partials[0].exists()
+    assert not list(output_root.glob(".candidate_samples.partial-*"))
+    assert list(scratch_root.iterdir()) == []
+    assert {
+        path: compute_file_sha256(path) for path in protected_files
+    } == original_hashes
+    scored = pq.read_table(
+        output_root / "candidate_samples" / "exact_scored_sample.parquet"
+    ).to_pylist()
+    parliament_rows = [row for row in scored if row["parlamento_diagnostic_only"]]
+    assert parliament_rows
+    assert all(row["removal_eligible"] is False for row in parliament_rows)
 
 
 def test_interrupted_partial_stage_is_cleaned_on_resume(tmp_path: Path) -> None:

@@ -9,7 +9,7 @@ later command can resume from the last completed stage.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from contextlib import contextmanager
+from contextlib import ExitStack, closing, contextmanager
 from datetime import datetime, timezone
 import argparse
 import csv
@@ -42,6 +42,7 @@ from cambacica.corpus.manifest import compute_file_sha256
 CENSUS_VERSION = "1.0.0"
 DEFAULT_INPUT_ROOT = Path("/mnt/data/cambacica-base-180m/deduplicated/exact")
 DEFAULT_OUTPUT_ROOT = Path("/mnt/data/cambacica-base-180m/dedup-census/near-v1")
+DEFAULT_SCRATCH_ROOT = Path("/tmp/cambacica-near-census")
 EXPECTED_EXACT_MANIFEST_SHA256 = (
     "57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428"
 )
@@ -362,7 +363,7 @@ def _atomic_stage_dir(stage_root: Path) -> Path:
     stage_root.parent.mkdir(parents=True, exist_ok=True)
     for partial in stage_root.parent.glob(f".{stage_root.name}.partial-*"):
         if partial.is_dir():
-            shutil.rmtree(partial, ignore_errors=True)
+            shutil.rmtree(partial)
         else:
             partial.unlink(missing_ok=True)
     return Path(
@@ -1909,8 +1910,13 @@ def _write_sorted_unique_runs(
 def _merge_unique_runs(runs: Sequence[Path], target: Path) -> int:
     count = 0
     previous: int | None = None
-    with target.open("wb") as output:
-        for value in heapq.merge(*(_iter_u64_file(path) for path in runs)):
+    with ExitStack() as resources:
+        iterators = [
+            resources.enter_context(closing(_iter_u64_file(path))) for path in runs
+        ]
+        merged = resources.enter_context(closing(heapq.merge(*iterators)))
+        output = resources.enter_context(target.open("wb"))
+        for value in merged:
             if value == previous:
                 continue
             output.write(struct.pack("<Q", value))
@@ -1963,20 +1969,21 @@ def _external_exact_pair_metrics(
         unique_b = _merge_runs_with_bounded_fan_in(
             runs_b, unique_b_path, scratch, prefix="b"
         )
-        iter_a = iter(_iter_u64_file(unique_a_path))
-        iter_b = iter(_iter_u64_file(unique_b_path))
-        value_a = next(iter_a, None)
-        value_b = next(iter_b, None)
-        shared = 0
-        while value_a is not None and value_b is not None:
-            if value_a == value_b:
-                shared += 1
-                value_a = next(iter_a, None)
-                value_b = next(iter_b, None)
-            elif value_a < value_b:
-                value_a = next(iter_a, None)
-            else:
-                value_b = next(iter_b, None)
+        with ExitStack() as resources:
+            iter_a = resources.enter_context(closing(_iter_u64_file(unique_a_path)))
+            iter_b = resources.enter_context(closing(_iter_u64_file(unique_b_path)))
+            value_a = next(iter_a, None)
+            value_b = next(iter_b, None)
+            shared = 0
+            while value_a is not None and value_b is not None:
+                if value_a == value_b:
+                    shared += 1
+                    value_a = next(iter_a, None)
+                    value_b = next(iter_b, None)
+                elif value_a < value_b:
+                    value_a = next(iter_a, None)
+                else:
+                    value_b = next(iter_b, None)
         union = unique_a + unique_b - shared
         min_unique = min(unique_a, unique_b)
         return {
@@ -2025,6 +2032,198 @@ def _exact_pair_metrics(
                 "exact_scoring_method": "in_memory_set",
             }
     return _external_exact_pair_metrics(text_a, text_b, scratch_parent)
+
+
+def _paths_overlap(left: Path, right: Path) -> bool:
+    return left == right or left in right.parents or right in left.parents
+
+
+def _prepare_exact_scratch_root(
+    scratch_root: Path | str,
+    *,
+    protected_paths: Sequence[Path],
+) -> Path:
+    root = Path(scratch_root).expanduser().resolve()
+    for protected in protected_paths:
+        protected_resolved = protected.resolve()
+        if _paths_overlap(root, protected_resolved):
+            raise ValueError(
+                f"Exact-sample scratch root overlaps protected path: {protected_resolved}"
+            )
+    root.mkdir(parents=True, exist_ok=True)
+    if not root.is_dir() or not os.access(root, os.W_OK | os.X_OK):
+        raise PermissionError(f"Exact-sample scratch root is not writable: {root}")
+    # Probe actual creation/removal so a bad scratch mount fails before the
+    # candidate sample stage is started. There is deliberately no TMPDIR/NFS
+    # fallback if this check fails.
+    with tempfile.TemporaryDirectory(prefix=".near-census-write-check-", dir=root):
+        pass
+    return root
+
+
+def _score_exact_sample_pairs(
+    *,
+    data_root: Path,
+    candidate_db_path: Path,
+    selected_pairs: Sequence[tuple[str, str]],
+    stage_dir: Path,
+    scratch_root: Path,
+) -> tuple[list[dict[str, Any]], int]:
+    candidate_db_path_uri = f"file:{candidate_db_path}?mode=ro"
+    with ExitStack() as resources:
+        candidate_db = resources.enter_context(
+            closing(sqlite3.connect(candidate_db_path_uri, uri=True))
+        )
+        candidate_db.row_factory = sqlite3.Row
+        selected_ids = {
+            bytes.fromhex(value) for pair in selected_pairs for value in pair
+        }
+        print(
+            f"[exact-sample] selected_pairs={len(selected_pairs):,} "
+            f"selected_endpoints={len(selected_ids):,}",
+            flush=True,
+        )
+        text_store_path = stage_dir / ".selected_texts.sqlite3"
+        text_store, text_count = _read_selected_texts(
+            data_root,
+            candidate_db,
+            selected_ids,
+            text_store_path,
+        )
+        resources.callback(text_store_path.unlink, missing_ok=True)
+        text_store = resources.enter_context(closing(text_store))
+
+        scored_rows: list[dict[str, Any]] = []
+        query = _candidate_join_query() + " WHERE p.id_a=? AND p.id_b=?"
+        with tempfile.TemporaryDirectory(
+            prefix="exact-sample-run-", dir=scratch_root
+        ) as run_scratch:
+            run_scratch_path = Path(run_scratch)
+            for index, pair in enumerate(selected_pairs, start=1):
+                raw_a, raw_b = bytes.fromhex(pair[0]), bytes.fromhex(pair[1])
+                base = candidate_db.execute(query, (raw_a, raw_b)).fetchone()
+                if base is None:
+                    raise ValueError(
+                        f"Selected candidate pair disappeared from index: {pair}"
+                    )
+                row = _unpack_candidate_row(tuple(base))
+                text_a = zlib.decompress(
+                    text_store.execute(
+                        "SELECT text_zlib FROM selected_texts WHERE record_id=?",
+                        (raw_a,),
+                    ).fetchone()[0]
+                ).decode("utf-8")
+                text_b = zlib.decompress(
+                    text_store.execute(
+                        "SELECT text_zlib FROM selected_texts WHERE record_id=?",
+                        (raw_b,),
+                    ).fetchone()[0]
+                ).decode("utf-8")
+                exact = _exact_pair_metrics(
+                    text_a,
+                    text_b,
+                    run_scratch_path,
+                    expected_words_a=int(row["words_a"]),
+                    expected_words_b=int(row["words_b"]),
+                )
+                ratio = _ratio(int(row["words_a"]), int(row["words_b"]))
+                flags = containment_flags(
+                    jaccard=float(exact["exact_jaccard"]),
+                    containment_a_in_b=float(exact["containment_a_in_b"]),
+                    containment_b_in_a=float(exact["containment_b_in_a"]),
+                    length_ratio=ratio,
+                    shared_shingles=int(exact["shared_shingles"]),
+                )
+                title_sim = _title_similarity(row.get("title_a"), row.get("title_b"))
+                high_jaccard = float(exact["exact_jaccard"]) >= 0.80
+                boilerplate = bool(
+                    high_jaccard
+                    and title_sim is not None
+                    and title_sim < 0.20
+                    and text_a[:300].casefold() != text_b[:300].casefold()
+                )
+                excerpts_a = _text_excerpt_fields(text_a)
+                excerpts_b = _text_excerpt_fields(text_b)
+                exact_row: dict[str, Any] = {
+                    "record_id_a": row["id_a"],
+                    "record_id_b": row["id_b"],
+                    "candidate_configs": row["candidate_configs"],
+                    "bucket_hits": row["bucket_hits"],
+                    "max_bucket_size": row["max_bucket_size"],
+                    "bucket_size_band": row["bucket_size_band"],
+                    "estimated_similarity": row["estimated_similarity"],
+                    "estimated_similarity_band": row["estimated_similarity_band"],
+                    "exact_jaccard": exact["exact_jaccard"],
+                    "exact_similarity_band": exact_tail_band(exact["exact_jaccard"])
+                    or similarity_band(exact["exact_jaccard"]),
+                    "containment_a_in_b": exact["containment_a_in_b"],
+                    "containment_b_in_a": exact["containment_b_in_a"],
+                    "containment_smaller_in_larger": exact[
+                        "containment_smaller_in_larger"
+                    ],
+                    "unique_shingles_a": exact["unique_shingles_a"],
+                    "unique_shingles_b": exact["unique_shingles_b"],
+                    "shared_shingles": exact["shared_shingles"],
+                    "union_shingles": exact["union_shingles"],
+                    "exact_scoring_method": exact["exact_scoring_method"],
+                    "source_a": row["source_a"],
+                    "subset_a": row["subset_a"],
+                    "source_b": row["source_b"],
+                    "subset_b": row["subset_b"],
+                    "source_subset_a": row["source_subset_a"],
+                    "source_subset_b": row["source_subset_b"],
+                    "source_pair": row["source_pair"],
+                    "pair_relation": row["pair_relation"],
+                    "words_a": row["words_a"],
+                    "words_b": row["words_b"],
+                    "length_band_a": row["length_band_a"],
+                    "length_band_b": row["length_band_b"],
+                    "length_ratio": ratio,
+                    "length_ratio_band": length_ratio_band(ratio),
+                    "domain_a": row["domain_a"],
+                    "domain_b": row["domain_b"],
+                    "url_a": row["url_a"],
+                    "url_b": row["url_b"],
+                    "title_a": row["title_a"],
+                    "title_b": row["title_b"],
+                    "title_token_jaccard": title_sim,
+                    "domain_category_a": row["domain_category_a"],
+                    "domain_category_b": row["domain_category_b"],
+                    "data_relative_path_a": row["path_a"],
+                    "data_relative_path_b": row["path_b"],
+                    "row_ordinal_a": row["ordinal_a"],
+                    "row_ordinal_b": row["ordinal_b"],
+                    "row_group_a": row["row_group_a"],
+                    "row_group_b": row["row_group_b"],
+                    "row_offset_a": row["row_offset_a"],
+                    "row_offset_b": row["row_offset_b"],
+                    "original_id_a": row["original_id_a"],
+                    "original_id_b": row["original_id_b"],
+                    "containment_flags": flags,
+                    "boilerplate_suspect": boilerplate,
+                    "boilerplate_suspect_basis": (
+                        "high exact Jaccard with low title-token overlap and differing opening excerpt"
+                        if boilerplate
+                        else ""
+                    ),
+                    "parlamento_diagnostic_only": row["parlamento_diagnostic_only"],
+                    "removal_eligible": False,
+                    "excerpt_start_a": excerpts_a["excerpt_start"],
+                    "excerpt_middle_a": excerpts_a["excerpt_middle"],
+                    "excerpt_end_a": excerpts_a["excerpt_end"],
+                    "excerpt_start_b": excerpts_b["excerpt_start"],
+                    "excerpt_middle_b": excerpts_b["excerpt_middle"],
+                    "excerpt_end_b": excerpts_b["excerpt_end"],
+                }
+                exact_row["review_categories"] = _review_categories(exact_row)
+                scored_rows.append(exact_row)
+                if index % 500 == 0:
+                    print(
+                        f"[exact-sample] exact-scored={index:,}/"
+                        f"{len(selected_pairs):,}",
+                        flush=True,
+                    )
+        return scored_rows, text_count
 
 
 def _bounded_excerpt(text: str, start: int, width: int = 360) -> str:
@@ -2147,6 +2346,22 @@ def _read_selected_texts(
 ) -> tuple[sqlite3.Connection, int]:
     """Fetch only selected endpoint texts by recorded row-group locators."""
     text_store = _sqlite_connect(text_store_path)
+    try:
+        recovered = _populate_selected_text_store(
+            data_root, candidate_db, selected_ids, text_store
+        )
+    except BaseException:
+        text_store.close()
+        raise
+    return text_store, recovered
+
+
+def _populate_selected_text_store(
+    data_root: Path,
+    candidate_db: sqlite3.Connection,
+    selected_ids: set[bytes],
+    text_store: sqlite3.Connection,
+) -> int:
     text_store.execute(
         "CREATE TABLE selected_texts (record_id BLOB PRIMARY KEY, text_zlib BLOB) WITHOUT ROWID"
     )
@@ -2211,9 +2426,8 @@ def _read_selected_texts(
         text_store.commit()
     expected = len(selected_ids)
     if recovered != expected:
-        text_store.close()
         raise ValueError(f"Recovered {recovered} selected texts, expected {expected}")
-    return text_store, recovered
+    return recovered
 
 
 def _write_parquet_rows(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
@@ -2424,6 +2638,7 @@ def run_exact_sample(
     *,
     input_root: Path | str = DEFAULT_INPUT_ROOT,
     output_root: Path | str = DEFAULT_OUTPUT_ROOT,
+    scratch_root: Path | str = DEFAULT_SCRATCH_ROOT,
     expected_manifest_sha256: str | None = EXPECTED_EXACT_MANIFEST_SHA256,
 ) -> dict[str, Any]:
     """Select deterministic strata and exact-score only the candidate sample."""
@@ -2453,156 +2668,22 @@ def run_exact_sample(
             raise FileExistsError(
                 f"Exact-sample stage exists but is invalid: {stage_root}"
             )
+        exact_scratch_root = _prepare_exact_scratch_root(
+            scratch_root,
+            protected_paths=(exact_root, output),
+        )
         stage_dir = _atomic_stage_dir(stage_root)
         started = time.perf_counter()
         candidate_db_path = candidate_root / "candidate_index.sqlite3"
         selected_pairs, sampling_metrics = _select_exact_sample(candidate_db_path)
         sampling_stratum_rows = sampling_metrics.pop("stratum_rows")
-        candidate_db = sqlite3.connect(f"file:{candidate_db_path}?mode=ro", uri=True)
-        candidate_db.row_factory = sqlite3.Row
-        selected_ids = {
-            bytes.fromhex(value) for pair in selected_pairs for value in pair
-        }
-        print(
-            f"[exact-sample] selected_pairs={len(selected_pairs):,} "
-            f"selected_endpoints={len(selected_ids):,}",
-            flush=True,
+        scored_rows, text_count = _score_exact_sample_pairs(
+            data_root=data_root,
+            candidate_db_path=candidate_db_path,
+            selected_pairs=selected_pairs,
+            stage_dir=stage_dir,
+            scratch_root=exact_scratch_root,
         )
-        text_store_path = stage_dir / ".selected_texts.sqlite3"
-        text_store, text_count = _read_selected_texts(
-            data_root,
-            candidate_db,
-            selected_ids,
-            text_store_path,
-        )
-
-        scored_rows: list[dict[str, Any]] = []
-        query = _candidate_join_query() + " WHERE p.id_a=? AND p.id_b=?"
-        scratch_root = stage_dir / ".exact-scratch"
-        scratch_root.mkdir()
-        for index, pair in enumerate(selected_pairs, start=1):
-            raw_a, raw_b = bytes.fromhex(pair[0]), bytes.fromhex(pair[1])
-            base = candidate_db.execute(query, (raw_a, raw_b)).fetchone()
-            if base is None:
-                raise ValueError(
-                    f"Selected candidate pair disappeared from index: {pair}"
-                )
-            row = _unpack_candidate_row(tuple(base))
-            text_a = zlib.decompress(
-                text_store.execute(
-                    "SELECT text_zlib FROM selected_texts WHERE record_id=?", (raw_a,)
-                ).fetchone()[0]
-            ).decode("utf-8")
-            text_b = zlib.decompress(
-                text_store.execute(
-                    "SELECT text_zlib FROM selected_texts WHERE record_id=?", (raw_b,)
-                ).fetchone()[0]
-            ).decode("utf-8")
-            exact = _exact_pair_metrics(
-                text_a,
-                text_b,
-                scratch_root,
-                expected_words_a=int(row["words_a"]),
-                expected_words_b=int(row["words_b"]),
-            )
-            ratio = _ratio(int(row["words_a"]), int(row["words_b"]))
-            flags = containment_flags(
-                jaccard=float(exact["exact_jaccard"]),
-                containment_a_in_b=float(exact["containment_a_in_b"]),
-                containment_b_in_a=float(exact["containment_b_in_a"]),
-                length_ratio=ratio,
-                shared_shingles=int(exact["shared_shingles"]),
-            )
-            title_sim = _title_similarity(row.get("title_a"), row.get("title_b"))
-            high_jaccard = float(exact["exact_jaccard"]) >= 0.80
-            boilerplate = bool(
-                high_jaccard
-                and title_sim is not None
-                and title_sim < 0.20
-                and text_a[:300].casefold() != text_b[:300].casefold()
-            )
-            excerpts_a = _text_excerpt_fields(text_a)
-            excerpts_b = _text_excerpt_fields(text_b)
-            exact_row: dict[str, Any] = {
-                "record_id_a": row["id_a"],
-                "record_id_b": row["id_b"],
-                "candidate_configs": row["candidate_configs"],
-                "bucket_hits": row["bucket_hits"],
-                "max_bucket_size": row["max_bucket_size"],
-                "bucket_size_band": row["bucket_size_band"],
-                "estimated_similarity": row["estimated_similarity"],
-                "estimated_similarity_band": row["estimated_similarity_band"],
-                "exact_jaccard": exact["exact_jaccard"],
-                "exact_similarity_band": exact_tail_band(exact["exact_jaccard"])
-                or similarity_band(exact["exact_jaccard"]),
-                "containment_a_in_b": exact["containment_a_in_b"],
-                "containment_b_in_a": exact["containment_b_in_a"],
-                "containment_smaller_in_larger": exact["containment_smaller_in_larger"],
-                "unique_shingles_a": exact["unique_shingles_a"],
-                "unique_shingles_b": exact["unique_shingles_b"],
-                "shared_shingles": exact["shared_shingles"],
-                "union_shingles": exact["union_shingles"],
-                "exact_scoring_method": exact["exact_scoring_method"],
-                "source_a": row["source_a"],
-                "subset_a": row["subset_a"],
-                "source_b": row["source_b"],
-                "subset_b": row["subset_b"],
-                "source_subset_a": row["source_subset_a"],
-                "source_subset_b": row["source_subset_b"],
-                "source_pair": row["source_pair"],
-                "pair_relation": row["pair_relation"],
-                "words_a": row["words_a"],
-                "words_b": row["words_b"],
-                "length_band_a": row["length_band_a"],
-                "length_band_b": row["length_band_b"],
-                "length_ratio": ratio,
-                "length_ratio_band": length_ratio_band(ratio),
-                "domain_a": row["domain_a"],
-                "domain_b": row["domain_b"],
-                "url_a": row["url_a"],
-                "url_b": row["url_b"],
-                "title_a": row["title_a"],
-                "title_b": row["title_b"],
-                "title_token_jaccard": title_sim,
-                "domain_category_a": row["domain_category_a"],
-                "domain_category_b": row["domain_category_b"],
-                "data_relative_path_a": row["path_a"],
-                "data_relative_path_b": row["path_b"],
-                "row_ordinal_a": row["ordinal_a"],
-                "row_ordinal_b": row["ordinal_b"],
-                "row_group_a": row["row_group_a"],
-                "row_group_b": row["row_group_b"],
-                "row_offset_a": row["row_offset_a"],
-                "row_offset_b": row["row_offset_b"],
-                "original_id_a": row["original_id_a"],
-                "original_id_b": row["original_id_b"],
-                "containment_flags": flags,
-                "boilerplate_suspect": boilerplate,
-                "boilerplate_suspect_basis": (
-                    "high exact Jaccard with low title-token overlap and differing opening excerpt"
-                    if boilerplate
-                    else ""
-                ),
-                "parlamento_diagnostic_only": row["parlamento_diagnostic_only"],
-                "removal_eligible": False,
-                "excerpt_start_a": excerpts_a["excerpt_start"],
-                "excerpt_middle_a": excerpts_a["excerpt_middle"],
-                "excerpt_end_a": excerpts_a["excerpt_end"],
-                "excerpt_start_b": excerpts_b["excerpt_start"],
-                "excerpt_middle_b": excerpts_b["excerpt_middle"],
-                "excerpt_end_b": excerpts_b["excerpt_end"],
-            }
-            exact_row["review_categories"] = _review_categories(exact_row)
-            scored_rows.append(exact_row)
-            if index % 500 == 0:
-                print(
-                    f"[exact-sample] exact-scored={index:,}/{len(selected_pairs):,}",
-                    flush=True,
-                )
-        shutil.rmtree(scratch_root, ignore_errors=True)
-        text_store.close()
-        text_store_path.unlink(missing_ok=True)
-        candidate_db.close()
 
         # The complete sample is deterministic and finite; sorting by pair ID
         # gives stable Parquet row order even if sampling strata are revisited.
@@ -2889,6 +2970,16 @@ def _cli() -> argparse.ArgumentParser:
         )
         if name == "fingerprints":
             child.add_argument("--batch-size", type=int, default=FINGERPRINT_BATCH_SIZE)
+        if name == "exact-sample":
+            child.add_argument(
+                "--scratch-root",
+                type=Path,
+                default=DEFAULT_SCRATCH_ROOT,
+                help=(
+                    "local directory for temporary exact pair-scoring files "
+                    f"(default: {DEFAULT_SCRATCH_ROOT})"
+                ),
+            )
         if name == "verify":
             child.add_argument(
                 "--allow-incomplete",
@@ -2963,6 +3054,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     run_exact_sample(
                         input_root=args.input_root,
                         output_root=args.output_root,
+                        scratch_root=args.scratch_root,
                         expected_manifest_sha256=args.expected_manifest_sha256,
                     ),
                     indent=2,
