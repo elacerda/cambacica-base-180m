@@ -1,8 +1,8 @@
 # Gate C1 Full-Corpus Near-Duplication Census (D2c)
 
-**Implementation:** complete; small smoke census passes
-**Full-corpus census:** not run; manual execution is next
-**Near-dedup production:** not run
+**Implementation:** complete
+**Full-corpus census:** COMPLETE / PASS; stages and artifacts verified against the pinned exact input
+**Near-dedup production:** NOT RUN
 **Input:** `/mnt/data/cambacica-base-180m/deduplicated/exact/data`
 **Exact manifest SHA-256:** `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`
 **Output root:** `/mnt/data/cambacica-base-180m/dedup-census/near-v1/`
@@ -91,28 +91,29 @@ published artifact hashes, then checks the fingerprint count against the exact
 manifest. It is intended for the final manual verification and reads the large
 signature/index artifacts to hash them.
 
-## Expected resources
+## Measured full-census resources
 
-Planning only; the full census has not run. The 128-value raw signature payload
-is about 20.6 GiB for 21,603,689 records; D2 estimated roughly 21 GB compressed
-signature storage. D2's 60–120 GB SQLite scenario used 16 bands. The selected
-union has 40 bands, so linear scaling suggests a 150–300 GB peak bucket index.
-Allow roughly 175–350 GB of census output and working disk, excluding the
-immutable input and candidate-specific growth.
+The completed stage resource reports record these measurements:
 
-D2's inherited signature projection was 4.6–7.4 CPU hours. Candidate index
-construction, endpoint recovery, and candidate volume were not measured at
-this scale. Plan for 3–6 GiB RAM and a 24–72 hour wall-time window on a host
-with sustained local storage. These are operational ranges, not measured
-guarantees. D2's 0.65M linear and 6.53M 10× candidate scenarios came from a
-stratified, enriched pilot and must not be treated as population estimates or
-capacity guarantees.
+| Stage | Wall seconds | Peak RSS bytes | Measured output / count |
+| --- | ---: | ---: | --- |
+| Fingerprints | 25,807.781 | 7,509,233,664 | 21,603,689 records; 22,857,453,805-byte signature Parquet |
+| LSH index | 59,207.704 | 4,421,447,680 | 864,147,560 postings; 31,879,938,048-byte SQLite index |
+| Candidate enumeration | 20,652.954 | 4,964,134,912 | 65,412,497 unique candidate pairs; 6,650,577 endpoints; 5,625,425,920-byte candidate database |
+| Candidate summary | 958.279 | 77,086,720 | 65,412,497 candidate pairs summarized |
+| Exact-scored sample | 4,042.118 | 771,731,456 | 8,014 pairs; 15,431 text endpoints |
 
-## Manual full-census commands
+The `full_corpus_planning` block in the sample resource report was written
+before the full run and remains a planning note; use the measured stage values
+above instead. D2 pilot projections are not census measurements or estimates
+of duplicate prevalence.
 
-Run these commands from the repository in a persistent shell or tmux session.
-They use the pinned manifest digest explicitly and never invoke a deletion
-stage.
+## Full-census stage commands
+
+The following commands document the reproducible stage interfaces. D2c is
+already complete; this D2d review did not rerun any stage or invoke a deletion
+command. Each completed stage is manifest-checked and reused on a matching
+rerun.
 
 ```bash
 cd ~/dev/cambacica-base-180m

@@ -56,7 +56,7 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização e caracterização concluídas; deduplicação exata de produção (versão 1.0.1) e verificação concluídas com sucesso e auditadas; piloto D2 e calibração D2b concluídos, produção de near dedup ainda não executada.
+- normalização e caracterização concluídas; deduplicação exata de produção (versão 1.0.1) e verificação concluídas com sucesso e auditadas; D2, D2b e D2c concluídos; revisão científica D2d concluída; produção de near dedup ainda não executada.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -70,20 +70,20 @@ Progresso atual:
 - palavras normalizadas: 21.510.183.558 antes, 21.470.091.017 depois (40.092.541 removidas);
 - frações de perda exata: perda documental de 0,2113% (0,00211257); perda de palavras de 0,1864% (0,00186389);
 - capacidades máximas pós-exato (propostas A/B/C): A **263.186.287** palavras (Gutenberg), B **526.372.575** (Gutenberg), C **423.812.666** (GigaVerbo `blogset`), inalteradas em relação ao pré-exato;
-- piloto representativo de near dedup (D2): **COMPLETE**, resultados registrados em [`C1_NEAR_DEDUP_PILOT.md`](C1_NEAR_DEDUP_PILOT.md) e artefatos em `/mnt/data/cambacica-base-180m/dedup-pilots/near-v1/`;
-- calibração científica targeted (D2b): **COMPLETE**, resultados em [`C1_NEAR_DEDUP_CALIBRATION.md`](C1_NEAR_DEDUP_CALIBRATION.md) e artefatos fora do repositório em `/tmp/cambacica-base-180m/dedup-pilots/near-calibration-v1/`;
-- implementação do censo near de corpus completo (D2c): **COMPLETE**, smoke census e verificação validados; runbook em [`C1_NEAR_DUP_CENSUS_D2C.md`](C1_NEAR_DUP_CENSUS_D2C.md);
-- execução do censo completo: **NOT RUN / NEXT**, a executar manualmente após revisão da implementação;
-- near dedup de produção: **NOT RUN**; contrato, limiar e política de ownership ainda não estão prontos para congelamento;
-- decontaminação de benchmarks: **PENDING**; inventário e regra de matching ainda não definidos;
+- piloto de near dedup (D2): **COMPLETE**, resultados em [`C1_NEAR_DEDUP_PILOT.md`](C1_NEAR_DEDUP_PILOT.md) e artefatos em `/mnt/data/cambacica-base-180m/dedup-pilots/near-v1/`;
+- calibração científica targeted (D2b): **COMPLETE**, resultados em [`C1_NEAR_DEDUP_CALIBRATION.md`](C1_NEAR_DEDUP_CALIBRATION.md) e artefatos em `/tmp/cambacica-base-180m/dedup-pilots/near-calibration-v1/`;
+- censo near de corpus completo (D2c): **COMPLETE / PASS**, verificado para o manifesto exato pinned; relatório em [`C1_NEAR_DUP_CENSUS_D2C.md`](C1_NEAR_DUP_CENSUS_D2C.md);
+- revisão científica e avaliação de política (D2d): **COMPLETE**, recomendação provisória B e packet em `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`; ainda requer verificações humanas limitadas antes de congelar a política;
+- near dedup de produção: **NOT RUN**; benchmark decontamination: **PENDING**;
+- inventário e regra de matching para decontaminação de benchmarks ainda não definidos;
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;
 - congelar políticas de idioma, qualidade e licença;
-- revisar os resultados D2/D2b e o censo D2c completo; decidir entre near dedup global, política limitada ou pular a near dedup global;
-- executar produção de near dedup somente se a decisão e uma regra segura forem sustentadas pelos resultados;
+- concluir a verificação humana limitada da recomendação D2d B para cópias literárias Gutenberg/web e artigos Carolina/wik–Wikipedia PT; manter os demais relacionamentos preservados;
+- executar produção de near dedup somente após confirmar a identidade e equivalência de conteúdo e congelar uma regra segura;
 - definir inventário e executar decontaminação de benchmarks;
 - comparar composições candidatas do corpus;
 - definir split train/validation/test reproduzível;
