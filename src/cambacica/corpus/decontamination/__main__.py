@@ -76,7 +76,24 @@ def _parser() -> argparse.ArgumentParser:
     )
     scan_parser.add_argument("--input-root", type=Path, default=DEFAULT_EXACT_ROOT)
     scan_parser.add_argument("--output-dir", type=Path, default=DEFAULT_SCAN_ROOT)
-    scan_parser.add_argument("--scratch-dir", type=Path)
+    scan_parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        help="persistent, explicitly owned local directory for the resumable SQLite checkpoint",
+    )
+    scan_parser.add_argument(
+        "--scratch-dir",
+        type=Path,
+        help="legacy alias for --checkpoint-dir",
+    )
+    scan_parser.add_argument(
+        "--run-id", help="unique identifier bound to this scan and output directory"
+    )
+    scan_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue the existing checkpoint after repeating all approval and input checks",
+    )
     scan_parser.add_argument("--policy", type=Path)
     scan_parser.add_argument(
         "--execute-bd3",
@@ -124,6 +141,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 input_root=args.input_root,
                 output_dir=args.output_dir,
                 scratch_dir=args.scratch_dir,
+                checkpoint_dir=args.checkpoint_dir,
+                run_id=args.run_id,
+                resume=args.resume,
                 execute_bd3=args.execute_bd3,
             )
         elif args.command == "verify-scan":

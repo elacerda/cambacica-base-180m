@@ -9,12 +9,15 @@ import hashlib
 import json
 import math
 import os
+import platform
 from pathlib import Path
 import resource
 import signal
+import shutil
 import sys
 import time
 from collections import defaultdict, deque
+from dataclasses import asdict
 from typing import Any
 
 import pyarrow.parquet as pq
@@ -23,6 +26,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from cambacica.corpus.decontamination.matcher import (  # noqa: E402
+    CHECKPOINT_SCHEMA_VERSION,
+    MATCHER_VERSION,
+    NORMALIZATION_VERSION,
     BenchmarkMatcher,
     CorpusDocument,
     fields_from_snapshot,
@@ -30,6 +36,7 @@ from cambacica.corpus.decontamination.matcher import (  # noqa: E402
 from cambacica.corpus.decontamination.production import (  # noqa: E402
     DEFAULT_EXACT_ROOT,
     PINNED_EXACT_MANIFEST_SHA256,
+    _canonical_sha256,
     _rss_bytes,
     _write_anchor_evidence,
     _write_hits,
@@ -199,6 +206,7 @@ def _profile(
     max_seconds: int,
     max_document_characters: int,
     stress_documents: int,
+    persistent_checkpoint: bool,
 ) -> dict[str, Any]:
     if output_dir.exists():
         raise FileExistsError(f"Refusing to overwrite profile output: {output_dir}")
@@ -206,6 +214,7 @@ def _profile(
     scratch_parent.mkdir(parents=True, exist_ok=True)
     scratch_dir = scratch_parent / f"c1-bd25-profile-{os.getpid()}"
     scratch_dir.mkdir()
+    scratch_free_bytes_at_start = shutil.disk_usage(scratch_dir).free
     snapshot_check = verify_snapshot(snapshot_dir)
     inputs = inspect_bd3_inputs(input_root)
     data_files = inputs.pop("data_file_inventory")
@@ -240,6 +249,40 @@ def _profile(
     families = sorted(sampler)
     if len(families) != 5:
         raise ValueError(f"Expected five post-D1 source families, found {families}")
+    sample_plan = [
+        {
+            "source_family": family,
+            "normalized_shard": spec["normalized_shard"],
+            "row_group": int(spec["row_group"]),
+            "row_ordinal_start": int(spec["row_ordinal_start"]),
+            "row_count": int(spec["row_count"]),
+        }
+        for family in families
+        for spec in list(sampler[family])
+    ]
+    checkpoint_database_path = scratch_dir / "resumable-profile.sqlite3"
+    checkpoint_identity = {
+        "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "profile_run_id": f"bd2.6-profile-{os.getpid()}",
+        "input_manifest_sha256": inputs["manifest_sha256"],
+        "ordered_source_inventory_sha256": _canonical_sha256(
+            [
+                {
+                    "relative": row["relative"],
+                    "bytes": row["bytes"],
+                    "rows": row["rows"],
+                    "sha256": row["sha256"],
+                }
+                for row in data_files
+            ]
+        ),
+        "benchmark_snapshot_manifest_sha256": snapshot_check["manifest_sha256"],
+        "matcher_policy_sha256": matcher_policy_sha256,
+        "matcher_policy": matcher_policy,
+        "matcher_implementation_version": MATCHER_VERSION,
+        "normalization_implementation_version": NORMALIZATION_VERSION,
+        "sample_plan_sha256": _canonical_sha256(sample_plan),
+    }
 
     profile_started = time.perf_counter()
     cpu_started = time.process_time()
@@ -249,7 +292,12 @@ def _profile(
         previous_handler = signal.signal(signal.SIGALRM, _timeout_handler)
         signal.setitimer(signal.ITIMER_REAL, max_seconds)
 
-    run = matcher.start_run(scratch_dir=scratch_dir, profile=True)
+    run = matcher.start_run(
+        scratch_dir=scratch_dir,
+        profile=True,
+        database_path=checkpoint_database_path if persistent_checkpoint else None,
+        checkpoint_identity=checkpoint_identity if persistent_checkpoint else None,
+    )
     run_status = "COMPLETE"
     sample_loop_started = time.perf_counter()
     try:
@@ -419,6 +467,22 @@ def _profile(
             if previous_handler is not None:
                 signal.signal(signal.SIGALRM, previous_handler)
 
+    checkpoint_restart = {"status": "NOT_RUN_NONRESUMABLE_PROFILE"}
+    if persistent_checkpoint and run_status.startswith("COMPLETE"):
+        restart_started = time.perf_counter()
+        with matcher.start_run(
+            database_path=checkpoint_database_path,
+            resume=True,
+            checkpoint_identity=checkpoint_identity,
+        ) as resumed_run:
+            restart_seconds = time.perf_counter() - restart_started
+            checkpoint_restart = {
+                "status": "REOPENED_FINALIZED_CHECKPOINT",
+                "restart_duration_seconds": round(restart_seconds, 6),
+                "checkpoint_status": resumed_run.checkpoint_status,
+                "completed_records": resumed_run.resume_position["documents_seen"],
+            }
+
     stress_metrics = _run_synthetic_stress(
         matcher,
         fields,
@@ -426,6 +490,11 @@ def _profile(
         scratch_dir,
         stress_documents,
         enabled=run_status.startswith("COMPLETE"),
+    )
+    recovery_metrics = (
+        _run_synthetic_recovery(matcher, fields, output_dir, scratch_dir)
+        if persistent_checkpoint and run_status.startswith("COMPLETE")
+        else {"status": "NOT_RUN_NONRESUMABLE_PROFILE"}
     )
     output_serialization_seconds = sample_serialization_seconds + stress_metrics.get(
         "serialization_seconds", 0.0
@@ -494,7 +563,7 @@ def _profile(
     _write_csv(by_source_path, by_source_rows, list(by_source_rows[0]))
 
     results = {
-        "preflight_profile_version": "c1-bd2.5-profile-v1",
+        "preflight_profile_version": "c1-bd2.6-recovery-profile-v1",
         "status": run_status,
         "production_scan": "NOT_RUN",
         "corpus_input": {
@@ -517,6 +586,7 @@ def _profile(
             "matcher_version": matcher.policy.matcher_version,
             "normalization_version": matcher.policy.normalization_version,
             "policy_frozen_for_bd3": False,
+            "persistent_checkpoint_profile": persistent_checkpoint,
         },
         "sample_design": {
             "seed": seed,
@@ -582,6 +652,19 @@ def _profile(
                 for path in sorted(output_dir.glob("profile_candidate_*.parquet"))
             ],
             "matcher_stage_wall_seconds": sample_profile_timings,
+            "checkpointing": {
+                "enabled": persistent_checkpoint,
+                "interval_documents": matcher.policy.commit_every_documents,
+                "commit_seconds": sample_profile_timings.get(
+                    "checkpoint_commit_seconds", 0.0
+                ),
+                "commit_count": int(
+                    sample_profile_timings.get("checkpoint_commits", 0)
+                ),
+                "sqlite_database_bytes_at_finalization": sample_sqlite_bytes,
+                "restart": checkpoint_restart,
+                "match_heavy_recovery_stress": recovery_metrics,
+            },
             "matcher_index_build_seconds": matcher_index_seconds,
             "source_families": by_source_rows,
             "synthetic_match_heavy_stress": stress_metrics,
@@ -610,6 +693,9 @@ def _profile(
         ],
         "runtime": {
             "scratch_directory": str(scratch_dir),
+            "scratch_free_bytes_at_start": scratch_free_bytes_at_start,
+            "host_name": platform.node(),
+            "host_platform": platform.platform(),
             "profile_wall_limit_seconds": max_seconds,
             "matcher_policy_frozen": False,
         },
@@ -620,6 +706,130 @@ def _profile(
         encoding="utf-8",
     )
     return results
+
+
+def _run_synthetic_recovery(
+    matcher: BenchmarkMatcher,
+    fields: list[Any],
+    output_dir: Path,
+    scratch_dir: Path,
+) -> dict[str, Any]:
+    """Measure restart and replay cost with dense, synthetic match evidence."""
+    passage = max(
+        (
+            field
+            for field in fields
+            if field.matchable and field.field_role in {"context", "passage"}
+        ),
+        key=lambda field: len(matcher.field_token_values[field.field_id]),
+    )
+    recovery_policy = matcher.policy
+    checkpoint_interval_documents = 16
+    documents = [
+        CorpusDocument(
+            doc_id=f"synthetic-recovery-{index:03d}",
+            text=f"Envelope {index}. {passage.original_text} Fecho {index}.",
+            source_shard="synthetic-recovery",
+            source="synthetic_match_heavy_recovery",
+            source_row_ordinal=index,
+        )
+        for index in range(19)
+    ]
+    database_path = scratch_dir / "match-heavy-recovery.sqlite3"
+    identity = {
+        "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "profile_run_id": f"synthetic-recovery-{os.getpid()}",
+        "source": "synthetic wrappers around one pinned benchmark passage",
+        "matcher_policy_sha256": _canonical_sha256(recovery_policy.to_dict()),
+        "matcher_policy": recovery_policy.to_dict(),
+        "checkpoint_interval_documents": checkpoint_interval_documents,
+        "matcher_implementation_version": MATCHER_VERSION,
+        "normalization_implementation_version": NORMALIZATION_VERSION,
+    }
+    started = time.perf_counter()
+    cpu_started = time.process_time()
+    first_run = matcher.start_run(
+        database_path=database_path,
+        checkpoint_identity=identity,
+        profile=True,
+        checkpoint_interval_documents=checkpoint_interval_documents,
+    )
+    for document in documents:
+        first_run.add_document(document)
+    initial_timings = first_run.profile_timings
+    initial_sqlite_bytes = first_run.scratch_bytes
+    initial_attempted_records = first_run.documents_seen
+    close_started = time.perf_counter()
+    first_run.close()  # rolls back the three rows after the 16-record checkpoint
+    interrupted_close_seconds = time.perf_counter() - close_started
+
+    restart_started = time.perf_counter()
+    resumed_run = matcher.start_run(
+        database_path=database_path,
+        resume=True,
+        checkpoint_identity=identity,
+        profile=True,
+        checkpoint_interval_documents=checkpoint_interval_documents,
+    )
+    restart_seconds = time.perf_counter() - restart_started
+    committed_records = resumed_run.resume_position["documents_seen"]
+    replayed_records = initial_attempted_records - committed_records
+    for document in documents[committed_records:]:
+        resumed_run.add_document(document)
+    accounting = resumed_run.finish()
+    hit_count = _write_hits(
+        output_dir / "recovery_synthetic_candidate_hits.parquet",
+        resumed_run.iter_results(),
+    )
+    evidence_count = _write_anchor_evidence(
+        output_dir / "recovery_synthetic_anchor_evidence.parquet",
+        resumed_run.iter_anchor_evidence(),
+    )
+    sqlite_bytes = resumed_run.scratch_bytes
+    resumed_timings = resumed_run.profile_timings
+    finalization_seconds = resumed_timings.get("finalization_seconds", 0.0)
+    resumed_run.close()
+    elapsed = time.perf_counter() - started
+    all_timings = {
+        name: initial_timings.get(name, 0.0) + resumed_timings.get(name, 0.0)
+        for name in set(initial_timings) | set(resumed_timings)
+    }
+    return {
+        "status": "COMPLETE_SYNTHETIC_RECOVERY",
+        "workload": "19 match-heavy wrappers; 16-record committed batch; three-record replay",
+        "recovery_type": "connection restart after rollback of uncommitted work",
+        "documents_processed": accounting.documents_seen,
+        "normalized_words_processed": resumed_run.normalized_words_seen,
+        "candidate_hits": hit_count,
+        "candidate_anchor_evidence_rows": evidence_count,
+        "elapsed_wall_seconds": round(elapsed, 6),
+        "cpu_seconds": round(time.process_time() - cpu_started, 6),
+        "words_per_second": round(resumed_run.normalized_words_seen / elapsed, 3)
+        if elapsed
+        else None,
+        "checkpoint_interval_documents": checkpoint_interval_documents,
+        "checkpoint_commit_seconds": round(
+            all_timings.get("checkpoint_commit_seconds", 0.0), 6
+        ),
+        "checkpoint_commits": int(all_timings.get("checkpoint_commits", 0)),
+        "sqlite_bytes_before_restart": initial_sqlite_bytes,
+        "sqlite_bytes_after_finalization": sqlite_bytes,
+        "interrupted_close_seconds": round(interrupted_close_seconds, 6),
+        "restart_duration_seconds": round(restart_seconds, 6),
+        "records_replayed_after_interruption": replayed_records,
+        "maximum_records_replayed_by_interval": checkpoint_interval_documents - 1,
+        "finalization_seconds": round(finalization_seconds, 6),
+        "peak_rss_bytes": _resource_peak_bytes(),
+        "source_accounting": [asdict(item) for item in accounting.shard_accounting],
+        "artifact_checksums": [
+            {
+                "path": path.name,
+                "bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            }
+            for path in sorted(output_dir.glob("recovery_synthetic_*.parquet"))
+        ],
+    }
 
 
 def _run_synthetic_stress(
@@ -728,6 +938,11 @@ def main() -> int:
     parser.add_argument("--max-seconds", type=int, default=1800)
     parser.add_argument("--max-document-characters", type=int, default=1_000_000)
     parser.add_argument("--stress-documents", type=int, default=64)
+    parser.add_argument(
+        "--persistent-checkpoint",
+        action="store_true",
+        help="profile the bounded sample with a durable WAL/FULL SQLite checkpoint",
+    )
     args = parser.parse_args()
     if not 10_000_000 <= args.target_words <= 20_000_000:
         parser.error("--target-words must be between 10,000,000 and 20,000,000")
@@ -746,6 +961,7 @@ def main() -> int:
             max_seconds=args.max_seconds,
             max_document_characters=args.max_document_characters,
             stress_documents=args.stress_documents,
+            persistent_checkpoint=args.persistent_checkpoint,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))

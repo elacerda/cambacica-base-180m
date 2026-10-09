@@ -23,6 +23,7 @@ from typing import Any, Iterable, Iterator
 
 MATCHER_VERSION = "c1-bd2-token-anchor-v2"
 NORMALIZATION_VERSION = "nfc-casefold-unicode-word-offsets-v1"
+CHECKPOINT_SCHEMA_VERSION = 2
 _ANCHOR_SEPARATOR = "\x1f"
 
 
@@ -118,6 +119,7 @@ class CorpusDocument:
     source: str | None = None
     source_row_ordinal: int | None = None
     input_manifest_sha256: str | None = None
+    source_shard_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -417,12 +419,22 @@ class BenchmarkMatcher:
         scratch_dir: Path | str | None = None,
         keep_scratch: bool = False,
         profile: bool = False,
+        database_path: Path | str | None = None,
+        resume: bool = False,
+        checkpoint_identity: dict[str, Any] | None = None,
+        shard_inventory: Iterable[dict[str, Any]] | None = None,
+        checkpoint_interval_documents: int | None = None,
     ) -> MatcherRun:
         return MatcherRun(
             self,
             scratch_dir=scratch_dir,
             keep_scratch=keep_scratch,
             profile=profile,
+            database_path=database_path,
+            resume=resume,
+            checkpoint_identity=checkpoint_identity,
+            shard_inventory=shard_inventory,
+            checkpoint_interval_documents=checkpoint_interval_documents,
         )
 
 
@@ -435,9 +447,21 @@ class MatcherRun:
         scratch_dir: Path | str | None = None,
         keep_scratch: bool = False,
         profile: bool = False,
+        database_path: Path | str | None = None,
+        resume: bool = False,
+        checkpoint_identity: dict[str, Any] | None = None,
+        shard_inventory: Iterable[dict[str, Any]] | None = None,
+        checkpoint_interval_documents: int | None = None,
     ) -> None:
         self.matcher = matcher
         self.policy = matcher.policy
+        self.checkpoint_interval_documents = (
+            checkpoint_interval_documents
+            if checkpoint_interval_documents is not None
+            else self.policy.commit_every_documents
+        )
+        if self.checkpoint_interval_documents < 1:
+            raise ValueError("checkpoint interval must be positive")
         self.keep_scratch = keep_scratch
         self.profile = profile
         self._profile_timings = {
@@ -447,34 +471,163 @@ class MatcherRun:
             "exact_lookup_and_evidence_write_seconds": 0.0,
             "sqlite_frequency_update_seconds": 0.0,
             "sqlite_commit_seconds": 0.0,
+            "checkpoint_commit_seconds": 0.0,
+            "checkpoint_commits": 0.0,
             "finalization_seconds": 0.0,
         }
-        if scratch_dir is None:
-            scratch = Path(tempfile.gettempdir())
-        else:
-            scratch = Path(scratch_dir).expanduser()
-            scratch.mkdir(parents=True, exist_ok=True)
-        descriptor, name = tempfile.mkstemp(
-            prefix="cambacica-bd2-match-", suffix=".sqlite3", dir=scratch
+        self.persistent = database_path is not None
+        self.checkpoint_identity = checkpoint_identity or {}
+        self._identity_json = json.dumps(
+            self.checkpoint_identity,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
         )
-        os.close(descriptor)
-        self.db_path = Path(name)
+        self._identity_sha256 = hashlib.sha256(
+            self._identity_json.encode("utf-8")
+        ).hexdigest()
+        self.shard_inventory = tuple(shard_inventory or ())
+        self._shard_names = tuple(
+            self._normalized_shard(item) for item in self.shard_inventory
+        )
+        self._shard_rows = tuple(int(item["rows"]) for item in self.shard_inventory)
+        if self.persistent:
+            if not resume and checkpoint_identity is None:
+                raise ValueError(
+                    "Persistent matcher runs require a checkpoint identity"
+                )
+            if checkpoint_identity is None:
+                raise ValueError(
+                    "Persistent matcher runs require a checkpoint identity"
+                )
+            policy_json = json.dumps(
+                self.policy.to_dict(),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if checkpoint_identity.get("matcher_policy") != self.policy.to_dict():
+                raise ValueError(
+                    "Checkpoint identity does not contain the complete matcher policy"
+                )
+            if (
+                checkpoint_identity.get("matcher_policy_sha256")
+                != hashlib.sha256(policy_json.encode("utf-8")).hexdigest()
+            ):
+                raise ValueError(
+                    "Checkpoint identity matcher policy checksum is invalid"
+                )
+            if (
+                checkpoint_identity.get("matcher_implementation_version")
+                != MATCHER_VERSION
+            ):
+                raise ValueError(
+                    "Checkpoint identity matcher implementation version is invalid"
+                )
+            if (
+                checkpoint_identity.get("normalization_implementation_version")
+                != NORMALIZATION_VERSION
+            ):
+                raise ValueError("Checkpoint identity normalization version is invalid")
+            if (
+                checkpoint_identity.get("checkpoint_schema_version")
+                != CHECKPOINT_SCHEMA_VERSION
+            ):
+                raise ValueError("Checkpoint identity schema version is invalid")
+            if self.shard_inventory:
+                identity_inventory = checkpoint_identity.get(
+                    "ordered_source_shard_inventory"
+                )
+                actual_inventory_json = json.dumps(
+                    list(self.shard_inventory),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                if (
+                    identity_inventory is None
+                    or json.dumps(
+                        identity_inventory,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    != actual_inventory_json
+                ):
+                    raise ValueError(
+                        "Checkpoint identity does not bind the ordered shard inventory"
+                    )
+                if (
+                    checkpoint_identity.get("ordered_source_shard_inventory_sha256")
+                    != hashlib.sha256(actual_inventory_json.encode("utf-8")).hexdigest()
+                ):
+                    raise ValueError(
+                        "Checkpoint ordered shard inventory checksum is invalid"
+                    )
+            self.db_path = Path(database_path).expanduser().resolve()
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            if resume and not self.db_path.is_file():
+                raise FileNotFoundError(
+                    f"Resume checkpoint database is missing: {self.db_path}"
+                )
+            if not resume and self.db_path.exists():
+                raise FileExistsError(
+                    f"Refusing to overwrite checkpoint database: {self.db_path}"
+                )
+        else:
+            if resume:
+                raise ValueError("Resume requires a persistent checkpoint database")
+            if scratch_dir is None:
+                scratch = Path(tempfile.gettempdir())
+            else:
+                scratch = Path(scratch_dir).expanduser()
+                scratch.mkdir(parents=True, exist_ok=True)
+            descriptor, name = tempfile.mkstemp(
+                prefix="cambacica-bd2-match-", suffix=".sqlite3", dir=scratch
+            )
+            os.close(descriptor)
+            self.db_path = Path(name)
         self.connection = sqlite3.connect(self.db_path)
-        self.connection.execute("PRAGMA journal_mode=DELETE")
-        self.connection.execute("PRAGMA synchronous=NORMAL")
+        if self.persistent:
+            self.connection.execute("PRAGMA journal_mode=WAL")
+            self.connection.execute("PRAGMA synchronous=FULL")
+            self.connection.execute("PRAGMA wal_autocheckpoint=1000")
+            self.connection.execute("PRAGMA busy_timeout=60000")
+        else:
+            self.connection.execute("PRAGMA journal_mode=DELETE")
+            self.connection.execute("PRAGMA synchronous=NORMAL")
         self.connection.execute("PRAGMA temp_store=FILE")
         self.connection.execute("PRAGMA cache_size=-16384")
-        self.connection.executescript(
+        if self.shard_inventory:
+            seen_docs_schema = """
+                CREATE TABLE IF NOT EXISTS seen_docs (
+                    source_shard_index INTEGER NOT NULL,
+                    source_row_ordinal INTEGER NOT NULL,
+                    doc_id TEXT NOT NULL UNIQUE,
+                    token_count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(source_shard_index, source_row_ordinal)
+                ) WITHOUT ROWID;
             """
-            CREATE TABLE seen_docs (
-                doc_id TEXT PRIMARY KEY
-            ) WITHOUT ROWID;
-            CREATE TABLE anchor_frequency (
+        else:
+            seen_docs_schema = """
+                CREATE TABLE IF NOT EXISTS seen_docs (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id TEXT NOT NULL UNIQUE,
+                    source_shard TEXT NOT NULL,
+                    source_shard_index INTEGER,
+                    source_row_ordinal INTEGER,
+                    token_count INTEGER NOT NULL DEFAULT 0
+                );
+            """
+        self.connection.executescript(
+            seen_docs_schema
+            + """
+            CREATE TABLE IF NOT EXISTS anchor_frequency (
                 anchor TEXT PRIMARY KEY,
                 document_frequency INTEGER NOT NULL,
                 frequent INTEGER NOT NULL
             ) WITHOUT ROWID;
-            CREATE TABLE anchor_evidence (
+            CREATE TABLE IF NOT EXISTS anchor_evidence (
                 anchor TEXT NOT NULL,
                 doc_id TEXT NOT NULL,
                 field_id TEXT NOT NULL,
@@ -486,9 +639,9 @@ class MatcherRun:
                     anchor, doc_id, field_id, benchmark_start, corpus_start
                 )
             ) WITHOUT ROWID;
-            CREATE INDEX anchor_evidence_doc_field
+            CREATE INDEX IF NOT EXISTS anchor_evidence_doc_field
                 ON anchor_evidence(doc_id, field_id, benchmark_start, corpus_start);
-            CREATE TABLE pending_anchor_evidence (
+            CREATE TABLE IF NOT EXISTS pending_anchor_evidence (
                 anchor TEXT NOT NULL,
                 doc_id TEXT NOT NULL,
                 field_id TEXT NOT NULL,
@@ -500,7 +653,7 @@ class MatcherRun:
                     anchor, doc_id, field_id, benchmark_start, corpus_start
                 )
             ) WITHOUT ROWID;
-            CREATE TABLE exact_evidence (
+            CREATE TABLE IF NOT EXISTS exact_evidence (
                 doc_id TEXT NOT NULL,
                 field_id TEXT NOT NULL,
                 corpus_start INTEGER NOT NULL,
@@ -509,7 +662,7 @@ class MatcherRun:
                 corpus_char_end INTEGER NOT NULL,
                 PRIMARY KEY(doc_id, field_id, corpus_start, corpus_end)
             ) WITHOUT ROWID;
-            CREATE TABLE doc_metadata (
+            CREATE TABLE IF NOT EXISTS doc_metadata (
                 doc_id TEXT PRIMARY KEY,
                 source_shard TEXT NOT NULL,
                 source TEXT,
@@ -517,7 +670,7 @@ class MatcherRun:
                 input_manifest_sha256 TEXT,
                 document_text_sha256 TEXT NOT NULL
             ) WITHOUT ROWID;
-            CREATE TABLE final_hits (
+            CREATE TABLE IF NOT EXISTS final_hits (
                 sort_doc TEXT NOT NULL,
                 sort_example TEXT NOT NULL,
                 sort_field TEXT NOT NULL,
@@ -530,15 +683,229 @@ class MatcherRun:
             ) WITHOUT ROWID;
             """
         )
-        self.connection.commit()
-        self._documents_seen = 0
-        self._normalized_words_seen = 0
-        self._last_document_tokens = 0
-        self._candidate_fields = 0
-        self._largest_document_tokens = 0
-        self._shards: dict[str, tuple[int, Any]] = {}
-        self._finished = False
+        self.connection.execute(
+            """CREATE TABLE IF NOT EXISTS checkpoint_state (
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                schema_version INTEGER NOT NULL,
+                identity_json TEXT NOT NULL,
+                identity_sha256 TEXT NOT NULL,
+                status TEXT NOT NULL,
+                next_shard_index INTEGER NOT NULL,
+                next_row_ordinal INTEGER NOT NULL,
+                documents_seen INTEGER NOT NULL,
+                normalized_words_seen INTEGER NOT NULL,
+                last_document_tokens INTEGER NOT NULL,
+                largest_document_tokens INTEGER NOT NULL
+            )"""
+        )
+        existing_state = self.connection.execute(
+            "SELECT schema_version, identity_json, identity_sha256 FROM checkpoint_state WHERE singleton=1"
+        ).fetchone()
+        if existing_state is None:
+            if resume:
+                self.connection.close()
+                raise ValueError("Checkpoint database has no recovery state")
+            initial_shard_index = next(
+                (
+                    index
+                    for index, row_count in enumerate(self._shard_rows)
+                    if row_count > 0
+                ),
+                len(self._shard_rows),
+            )
+            self.connection.execute(
+                """INSERT INTO checkpoint_state VALUES
+                   (1, ?, ?, ?, 'SCANNING', ?, 0, 0, 0, 0, 0)""",
+                (
+                    CHECKPOINT_SCHEMA_VERSION,
+                    self._identity_json,
+                    self._identity_sha256,
+                    initial_shard_index,
+                ),
+            )
+            self.connection.commit()
+        else:
+            if not resume:
+                self.connection.close()
+                raise FileExistsError(
+                    f"Refusing to reuse checkpoint database: {self.db_path}"
+                )
+            schema_version, saved_identity, saved_sha = existing_state
+            integrity = self.connection.execute("PRAGMA integrity_check").fetchone()[0]
+            if integrity != "ok":
+                self.connection.close()
+                raise ValueError(
+                    f"Checkpoint database integrity check failed: {integrity}"
+                )
+            if schema_version != CHECKPOINT_SCHEMA_VERSION:
+                self.connection.close()
+                raise ValueError(
+                    "Checkpoint schema version mismatch: "
+                    f"{schema_version} != {CHECKPOINT_SCHEMA_VERSION}"
+                )
+            if (
+                saved_identity != self._identity_json
+                or saved_sha != self._identity_sha256
+            ):
+                self.connection.close()
+                raise ValueError("Checkpoint identity does not match the requested run")
+
+        self._load_checkpoint_state(resume=resume)
+        self._candidate_fields = int(
+            self.connection.execute("SELECT count(*) FROM final_hits").fetchone()[0]
+        )
+        self._finished = self._state_status in {"FINALIZED", "PUBLISHED"}
+        self._scan_started = False
+        self._uncommitted_documents = 0
         self._closed = False
+
+    @staticmethod
+    def _normalized_shard(item: dict[str, Any]) -> str:
+        if "normalized_shard" in item:
+            return str(item["normalized_shard"])
+        relative = str(item["relative"])
+        return Path(relative).relative_to("data").as_posix()
+
+    def _load_checkpoint_state(self, *, resume: bool) -> None:
+        row = self.connection.execute(
+            """SELECT status, next_shard_index, next_row_ordinal,
+                      documents_seen, normalized_words_seen, last_document_tokens,
+                      largest_document_tokens
+               FROM checkpoint_state WHERE singleton=1"""
+        ).fetchone()
+        if row is None:
+            raise ValueError("Checkpoint database has no recovery state")
+        (
+            self._state_status,
+            next_shard_index,
+            next_row_ordinal,
+            self._documents_seen,
+            self._normalized_words_seen,
+            self._last_document_tokens,
+            self._largest_document_tokens,
+        ) = row
+        self._next_shard_index = int(next_shard_index)
+        self._next_row_ordinal = int(next_row_ordinal)
+        actual_count = int(
+            self.connection.execute("SELECT count(*) FROM seen_docs").fetchone()[0]
+        )
+        if actual_count != self._documents_seen:
+            raise ValueError("Checkpoint document count does not reconcile")
+        if self.shard_inventory:
+            self._validate_inventory_progress()
+        elif resume and (self._next_shard_index or self._next_row_ordinal):
+            raise ValueError("Checkpoint has shard progress without a pinned inventory")
+        if self._state_status not in {
+            "SCANNING",
+            "READY_TO_FINALIZE",
+            "FINALIZING",
+            "FINALIZED",
+            "PUBLISHED",
+        }:
+            raise ValueError(f"Unsupported checkpoint state: {self._state_status}")
+
+    def _validate_inventory_progress(self) -> None:
+        if not 0 <= self._next_shard_index <= len(self.shard_inventory):
+            raise ValueError(
+                "Checkpoint next shard index is outside the pinned inventory"
+            )
+        if self._next_shard_index == len(self.shard_inventory):
+            if self._next_row_ordinal != 0:
+                raise ValueError(
+                    "Checkpoint row ordinal is invalid after the final shard"
+                )
+        elif (
+            not 0 <= self._next_row_ordinal <= self._shard_rows[self._next_shard_index]
+        ):
+            raise ValueError("Checkpoint row ordinal is outside the current shard")
+        expected_count = (
+            sum(self._shard_rows[: self._next_shard_index]) + self._next_row_ordinal
+        )
+        if expected_count != self._documents_seen:
+            raise ValueError(
+                "Checkpoint progress does not reconcile with committed rows"
+            )
+        grouped = {
+            int(index): (int(count), int(minimum), int(maximum))
+            for index, count, minimum, maximum in self.connection.execute(
+                """SELECT source_shard_index, count(*), min(source_row_ordinal),
+                          max(source_row_ordinal)
+                   FROM seen_docs WHERE source_shard_index IS NOT NULL
+                   GROUP BY source_shard_index"""
+            )
+        }
+        for index, count in enumerate(self._shard_rows):
+            expected = count if index < self._next_shard_index else 0
+            if index == self._next_shard_index:
+                expected = self._next_row_ordinal
+            actual_count, minimum, maximum = grouped.get(index, (0, 0, -1))
+            if actual_count != expected or (
+                expected and (minimum != 0 or maximum != expected - 1)
+            ):
+                raise ValueError(
+                    f"Checkpoint rows do not reconcile for shard {self._shard_names[index]}"
+                )
+
+    @property
+    def resume_position(self) -> dict[str, int]:
+        """Return the next committed source location for a resumable scan."""
+        return {
+            "shard_index": self._next_shard_index,
+            "row_ordinal": self._next_row_ordinal,
+            "documents_seen": self._documents_seen,
+        }
+
+    @property
+    def checkpoint_status(self) -> str:
+        return str(self._state_status)
+
+    def mark_published(self) -> None:
+        """Record publication only after the final directory rename succeeds."""
+        if not self.persistent or self._state_status not in {"FINALIZED", "PUBLISHED"}:
+            raise RuntimeError("Only a finalized persistent run can be published")
+        self.connection.execute(
+            "UPDATE checkpoint_state SET status='PUBLISHED' WHERE singleton=1"
+        )
+        self.connection.commit()
+        self._state_status = "PUBLISHED"
+
+    def _validate_document_position(self, document: CorpusDocument) -> None:
+        if not self.shard_inventory:
+            return
+        if document.source_shard_index is None or document.source_row_ordinal is None:
+            raise ValueError("Pinned shard scans require shard index and row ordinal")
+        index = self._next_shard_index
+        ordinal = self._next_row_ordinal
+        while index < len(self.shard_inventory) and self._shard_rows[index] == 0:
+            index += 1
+        if index >= len(self.shard_inventory):
+            raise ValueError(
+                "Unexpected source row after the pinned inventory is complete"
+            )
+        if (
+            document.source_shard_index != index
+            or document.source_row_ordinal != ordinal
+            or document.source_shard != self._shard_names[index]
+        ):
+            expected = (
+                f"{self._shard_names[index]}:{ordinal}"
+                if index < len(self._shard_names)
+                else "end of pinned inventory"
+            )
+            raise ValueError(
+                "Out-of-order or unexpected source row: "
+                f"{document.source_shard}:{document.source_row_ordinal}; expected {expected}"
+            )
+
+    def _next_position_after_document(self) -> tuple[int, int]:
+        index = self._next_shard_index
+        ordinal = self._next_row_ordinal + 1
+        if ordinal == self._shard_rows[index]:
+            index += 1
+            ordinal = 0
+            while index < len(self._shard_rows) and self._shard_rows[index] == 0:
+                index += 1
+        return index, ordinal
 
     def __enter__(self) -> MatcherRun:
         return self
@@ -548,25 +915,42 @@ class MatcherRun:
 
     def add_document(self, document: CorpusDocument) -> None:
         """Index one row using a bounded token window and SQLite spill."""
-        if self._finished or self._closed:
+        if self._finished or self._closed or self._state_status != "SCANNING":
             raise RuntimeError("Matcher run is already finished or closed")
         if not document.doc_id:
             raise ValueError("Corpus document requires a stable record ID")
         if not isinstance(document.text, str):
             raise TypeError("Corpus document text must be a string")
+        self._validate_document_position(document)
         accounting_started = time.perf_counter() if self.profile else 0.0
         try:
-            self.connection.execute(
-                "INSERT INTO seen_docs(doc_id) VALUES (?)", (document.doc_id,)
-            )
+            if self.shard_inventory:
+                self.connection.execute(
+                    """INSERT INTO seen_docs
+                       (source_shard_index, source_row_ordinal, doc_id)
+                       VALUES (?, ?, ?)""",
+                    (
+                        document.source_shard_index,
+                        document.source_row_ordinal,
+                        document.doc_id,
+                    ),
+                )
+            else:
+                self.connection.execute(
+                    """INSERT INTO seen_docs
+                       (doc_id, source_shard, source_shard_index, source_row_ordinal)
+                       VALUES (?, ?, ?, ?)""",
+                    (
+                        document.doc_id,
+                        document.source_shard,
+                        document.source_shard_index,
+                        document.source_row_ordinal,
+                    ),
+                )
         except sqlite3.IntegrityError as exc:
             raise ValueError(f"Duplicate corpus record ID: {document.doc_id}") from exc
         self._documents_seen += 1
-        count, digest = self._shards.get(document.source_shard, (0, hashlib.sha256()))
-        id_bytes = document.doc_id.encode("utf-8")
-        digest.update(len(id_bytes).to_bytes(8, "big"))
-        digest.update(id_bytes)
-        self._shards[document.source_shard] = (count + 1, digest)
+        self._scan_started = True
         if self.profile:
             self._profile_timings["sqlite_accounting_seconds"] += (
                 time.perf_counter() - accounting_started
@@ -576,6 +960,7 @@ class MatcherRun:
         # frequencies are known. If an anchor crosses the configured cap here,
         # evidence from earlier documents and this document are both discarded.
         found: set[str] = set()
+        frequent_in_document: set[str] = set()
         ngram_size = self.policy.anchor_ngram_tokens
         chunk_tokens = max(
             self.policy.document_chunk_tokens,
@@ -630,13 +1015,15 @@ class MatcherRun:
                     ):
                         continue
                     if anchor not in found:
+                        found.add(anchor)
                         frequency = self.connection.execute(
                             "SELECT frequent FROM anchor_frequency WHERE anchor=?",
                             (anchor,),
                         ).fetchone()
                         if frequency is not None and frequency[0]:
-                            continue
-                        found.add(anchor)
+                            frequent_in_document.add(anchor)
+                    if anchor in frequent_in_document:
+                        continue
                     matched_field_positions = [
                         (field_id, benchmark_start)
                         for field_id, benchmark_start in field_positions
@@ -842,13 +1229,41 @@ class MatcherRun:
             self._profile_timings["sqlite_accounting_seconds"] += (
                 time.perf_counter() - phase_started
             )
-        if self._documents_seen % self.policy.commit_every_documents == 0:
+        if self.shard_inventory:
+            next_shard_index, next_row_ordinal = self._next_position_after_document()
+        else:
+            next_shard_index, next_row_ordinal = 0, 0
+        self._next_shard_index = next_shard_index
+        self._next_row_ordinal = next_row_ordinal
+        self.connection.execute(
+            "UPDATE seen_docs SET token_count=? WHERE doc_id=?",
+            (document_tokens, document.doc_id),
+        )
+        self.connection.execute(
+            """UPDATE checkpoint_state
+               SET status='SCANNING', next_shard_index=?, next_row_ordinal=?,
+                   documents_seen=?, normalized_words_seen=?, last_document_tokens=?,
+                   largest_document_tokens=?
+               WHERE singleton=1""",
+            (
+                self._next_shard_index,
+                self._next_row_ordinal,
+                self._documents_seen,
+                self._normalized_words_seen,
+                self._last_document_tokens,
+                self._largest_document_tokens,
+            ),
+        )
+        self._uncommitted_documents += 1
+        if self._uncommitted_documents >= self.checkpoint_interval_documents:
             phase_started = time.perf_counter() if self.profile else 0.0
             self.connection.commit()
+            self._uncommitted_documents = 0
             if self.profile:
-                self._profile_timings["sqlite_commit_seconds"] += (
-                    time.perf_counter() - phase_started
-                )
+                elapsed = time.perf_counter() - phase_started
+                self._profile_timings["sqlite_commit_seconds"] += elapsed
+                self._profile_timings["checkpoint_commit_seconds"] += elapsed
+                self._profile_timings["checkpoint_commits"] += 1
 
     def _record_nearby_answer(
         self,
@@ -905,8 +1320,9 @@ class MatcherRun:
 
     def scan(self, documents: Iterable[CorpusDocument]) -> ScanAccounting:
         """Consume the supplied iterator exactly once and finalize candidate rows."""
-        if self._documents_seen or self._finished:
-            raise RuntimeError("scan() requires a fresh matcher run")
+        if self._scan_started or self._finished:
+            raise RuntimeError("scan() requires a fresh or not-yet-resumed matcher run")
+        self._scan_started = True
         try:
             for document in documents:
                 self.add_document(document)
@@ -917,30 +1333,88 @@ class MatcherRun:
 
     def finish(self) -> ScanAccounting:
         """Finalize results after ``add_document`` or a bounded manual pass."""
-        if self._finished or self._closed:
-            raise RuntimeError("Matcher run is already finished or closed")
+        if self._closed:
+            raise RuntimeError("Matcher run is already closed")
+        if self._state_status in {"FINALIZED", "PUBLISHED"}:
+            self._finished = True
+            return self._accounting_from_db()
+        if self.shard_inventory and (
+            self._next_shard_index != len(self.shard_inventory)
+            or self._next_row_ordinal != 0
+        ):
+            raise ValueError(
+                "Cannot finalize before every pinned input row is accounted: "
+                f"next={self._next_shard_index}:{self._next_row_ordinal}, "
+                f"documents={self._documents_seen}"
+            )
         try:
             phase_started = time.perf_counter() if self.profile else 0.0
             self.connection.commit()
+            self._uncommitted_documents = 0
+            if self._state_status == "SCANNING":
+                self.connection.execute(
+                    "UPDATE checkpoint_state SET status='READY_TO_FINALIZE' WHERE singleton=1"
+                )
+                self.connection.commit()
+                self._state_status = "READY_TO_FINALIZE"
+            if self._state_status == "READY_TO_FINALIZE":
+                self.connection.execute(
+                    "UPDATE checkpoint_state SET status='FINALIZING' WHERE singleton=1"
+                )
+                self.connection.commit()
+                self._state_status = "FINALIZING"
+            self.connection.execute("BEGIN IMMEDIATE")
             self._finalize_hits()
+            self.connection.execute(
+                "UPDATE checkpoint_state SET status='FINALIZED' WHERE singleton=1"
+            )
             self.connection.commit()
+            self._state_status = "FINALIZED"
             if self.profile:
                 self._profile_timings["finalization_seconds"] += (
                     time.perf_counter() - phase_started
                 )
             self._finished = True
-            accounting = tuple(
-                ShardAccounting(shard, count, digest.hexdigest())
-                for shard, (count, digest) in sorted(self._shards.items())
-            )
-            return ScanAccounting(
-                documents_seen=self._documents_seen,
-                candidate_fields=self._candidate_fields,
-                shard_accounting=accounting,
-            )
+            return self._accounting_from_db()
         except Exception:
             self.connection.rollback()
+            self._load_checkpoint_state(resume=True)
             raise
+
+    def _accounting_from_db(self) -> ScanAccounting:
+        shards: dict[str, tuple[int, Any]] = {}
+        if self.shard_inventory:
+            rows = (
+                (
+                    self._shard_names[int(index)],
+                    doc_id,
+                )
+                for index, doc_id in self.connection.execute(
+                    """SELECT source_shard_index, doc_id FROM seen_docs
+                       ORDER BY source_shard_index, source_row_ordinal"""
+                )
+            )
+        else:
+            rows = self.connection.execute(
+                "SELECT source_shard, doc_id FROM seen_docs ORDER BY sequence"
+            )
+        for shard, doc_id in rows:
+            count, digest = shards.get(shard, (0, hashlib.sha256()))
+            id_bytes = doc_id.encode("utf-8")
+            digest.update(len(id_bytes).to_bytes(8, "big"))
+            digest.update(id_bytes)
+            shards[shard] = count + 1, digest
+        self._candidate_fields = int(
+            self.connection.execute("SELECT count(*) FROM final_hits").fetchone()[0]
+        )
+        return ScanAccounting(
+            documents_seen=self._documents_seen,
+            candidate_fields=self._candidate_fields,
+            shard_accounting=tuple(
+                ShardAccounting(shard, count, digest.hexdigest())
+                for shard, (count, digest) in sorted(shards.items())
+            ),
+        )
 
     def _insert_result(self, result: MatchResult) -> None:
         payload = json.dumps(
@@ -1483,8 +1957,15 @@ class MatcherRun:
 
     @property
     def scratch_bytes(self) -> int:
-        self.connection.commit()
-        return self.db_path.stat().st_size if self.db_path.exists() else 0
+        return sum(
+            path.stat().st_size
+            for path in (
+                self.db_path,
+                Path(f"{self.db_path}-wal"),
+                Path(f"{self.db_path}-shm"),
+            )
+            if path.exists()
+        )
 
     @property
     def normalized_words_seen(self) -> int:
@@ -1518,10 +1999,16 @@ class MatcherRun:
     def close(self) -> None:
         if self._closed:
             return
+        if self.connection.in_transaction:
+            self.connection.rollback()
+        if self.persistent:
+            self.connection.execute("PRAGMA wal_checkpoint(FULL)")
         self.connection.close()
         self._closed = True
-        if not self.keep_scratch:
+        if not self.persistent and not self.keep_scratch:
             self.db_path.unlink(missing_ok=True)
+            Path(f"{self.db_path}-wal").unlink(missing_ok=True)
+            Path(f"{self.db_path}-shm").unlink(missing_ok=True)
 
 
 def fields_from_snapshot(path: Path | str) -> list[MatchField]:
