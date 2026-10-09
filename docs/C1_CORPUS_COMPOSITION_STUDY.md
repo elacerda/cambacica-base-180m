@@ -253,9 +253,12 @@ C1 poderá ser marcado como PASS quando houver:
 - fontes finais selecionadas e revisões pinned;
 - política de idioma e qualidade congelada;
 - política de licença documentada;
-- deduplicação global definida e executável;
-- decontaminação de benchmarks definida;
-- split train/validation/test reproduzível;
+- D1 exact deduplication verificada; decisão de near dedup aprovada para a
+  primeira execução com zero remoções e produção não executada por decisão
+  científica;
+- inventário e política de decontaminação de benchmarks aprovados, com
+  execução e verificação concluídas;
+- contrato de split train/validation/test aprovado e reproduzível;
 - manifests finais dos documentos;
 - estatísticas de composição antes/depois dos filtros;
 - famílias de mistura reduzidas a uma decisão científica justificável;

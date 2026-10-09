@@ -56,7 +56,7 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização e caracterização concluídas; deduplicação exata de produção (versão 1.0.1) e verificação concluídas com sucesso e auditadas; D2, D2b e D2c concluídos; revisão científica D2d concluída; produção de near dedup ainda não executada.
+- normalização e caracterização concluídas; D1 COMPLETE / PASS; D2–D2d COMPLETE; near dedup da primeira execução aprovado em zero remoções; benchmark decontamination NEXT / NOT RUN.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -73,18 +73,18 @@ Progresso atual:
 - piloto de near dedup (D2): **COMPLETE**, resultados em [`C1_NEAR_DEDUP_PILOT.md`](C1_NEAR_DEDUP_PILOT.md) e artefatos em `/mnt/data/cambacica-base-180m/dedup-pilots/near-v1/`;
 - calibração científica targeted (D2b): **COMPLETE**, resultados em [`C1_NEAR_DEDUP_CALIBRATION.md`](C1_NEAR_DEDUP_CALIBRATION.md) e artefatos em `/tmp/cambacica-base-180m/dedup-pilots/near-calibration-v1/`;
 - censo near de corpus completo (D2c): **COMPLETE / PASS**, verificado para o manifesto exato pinned; relatório em [`C1_NEAR_DUP_CENSUS_D2C.md`](C1_NEAR_DUP_CENSUS_D2C.md);
-- revisão científica e avaliação de política (D2d): **COMPLETE**, recomendação provisória B e packet em `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`; ainda requer verificações humanas limitadas antes de congelar a política;
-- near dedup de produção: **NOT RUN**; benchmark decontamination: **PENDING**;
-- inventário e regra de matching para decontaminação de benchmarks ainda não definidos;
+- revisão científica e avaliação de política (D2d): **COMPLETE**, com packet em `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`;
+- decisão científica de near dedup para a primeira execução: **APPROVED / CLOSED**; preservar todos os registros pós-D1, com zero remoções por near dedup. A recomendação B de D2d permanece somente como direção futura. Veja [`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md);
+- produção de near dedup: **NOT RUN BY DESIGN**; não é um blocker para a decontaminação de benchmarks;
+- decontaminação de benchmarks: **NEXT / NOT RUN**; plano em [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:
 
 - selecionar fontes finais e revisões pinned;
 - congelar políticas de idioma, qualidade e licença;
-- concluir a verificação humana limitada da recomendação D2d B para cópias literárias Gutenberg/web e artigos Carolina/wik–Wikipedia PT; manter os demais relacionamentos preservados;
-- executar produção de near dedup somente após confirmar a identidade e equivalência de conteúdo e congelar uma regra segura;
-- definir inventário e executar decontaminação de benchmarks;
+- aprovar o inventário de benchmarks, os critérios de matching e a política de revisão do plano C1;
+- implementar e executar a decontaminação de benchmarks depois da aprovação científica;
 - comparar composições candidatas do corpus;
 - definir split train/validation/test reproduzível;
 - produzir manifests e estatísticas finais para a interface com C2.

@@ -149,20 +149,23 @@ invariants:
 - Manifest SHA-256: `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`
 
 
-## Deferred C1 order
+## First-run downstream C1 order
 
 The required downstream order is:
 
 ```text
 normalized
 → exact dedup
-→ near dedup
+→ first-run near-dedup decision: preserve all; zero removals
 → benchmark decontamination
 → split
 → final A/B/C construction
 ```
 
-Benchmark decontamination has no frozen benchmark inventory or matching rule
-in this contract. Near-dedup thresholds also remain unfrozen pending a
-representative pilot. Production exact dedup is a separate next action and is
-not run as part of implementation or pilot validation.
+D1 exact deduplication is complete. D2–D2d are complete, and the scientists
+approved no near-dedup removals for the first training run; this is not a claim
+that the corpus is near-duplicate-free. The decision is recorded in
+[`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md).
+Benchmark decontamination is the next C1 stage; its inventory and matching
+policy are proposed in
+[`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md).

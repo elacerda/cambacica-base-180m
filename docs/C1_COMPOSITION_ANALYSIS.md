@@ -68,7 +68,7 @@ Principais constatações empíricas da auditoria:
 1. **Disparidade extrema de tamanho por domínio no Corpus Carolina**: Documentos legislativos (`leg`) e judiciais (`jud`) contêm textos integrais com até milhões de palavras por registro TEI, enquanto o subconjunto social/web (`dat`) apresenta 24,7% de registros muito curtos (tweets, comentários breves).
 2. **Redundância de fórmulas no ParlamentoPT**: 11,45% da amostra representativa de debates parlamentares consiste em repetições exatas de fórmulas regimentais, despachos e cabeçalhos editoriais curtos.
 3. **Composição e filtragem no GigaVerbo-v2**: Na partição `edu_high`, a exclusão formal eliminou 55.519 registros de tradução sintética (`ultrachat`) durante a coleta dos 25.000 documentos elegíveis. Os 11 subconjuntos sobreviventes possuem distribuições de tamanho e escores de qualidade heterogêneos, destacando-se `finepdfs_por_Latn` como fonte de textos formais e longos.
-4. **Isolamento de Overlap nas Amostras**: 0 colisões exatas e 0 near-duplicates com Jaccard $\ge 0,80$ foram encontrados entre as amostras persistentes das diferentes fontes, embora a sobreposição latente na população total permaneça um risco a ser mitigado na deduplicação global.
+4. **Isolamento de Overlap nas Amostras**: 0 colisões exatas e 0 near-duplicates com Jaccard $\ge 0,80$ foram encontrados entre as amostras persistentes das diferentes fontes. Isso não mede o overlap latente da população. Após D1 e a investigação D2–D2d, a decisão para a primeira execução é preservar todos os registros pós-D1, com zero remoções por near dedup; redundâncias aproximadas permanecem como limitação documentada.
 
 ---
 
@@ -432,12 +432,12 @@ de planejamento.
 
 ## 8. Ordem de deduplicação e preparação do C1
 
-A ordem aprovada para os pools normalizados e a construção dos candidatos é:
+A ordem para a primeira execução, após a decisão científica final, é:
 
 ```text
 normalizados
 → deduplicação exata
-→ deduplicação aproximada
+→ decisão de near dedup: preservar todos os registros pós-D1; zero remoções
 → decontaminação de benchmarks
 → split
 → construção final de A/B/C
@@ -448,12 +448,14 @@ A especificação congelada da etapa exata é
 `content_sha256` dos registros normalizados completos, mantém todas as linhas
 de ParlamentoPT e registra cada linha descartada junto de sua representante.
 
-A deduplicação aproximada será calibrada em um piloto representativo. Nenhum
-limiar de Jaccard está congelado. A decontaminação de benchmarks permanece
-separada: inventário, matching e tratamento dos resultados ainda serão
-definidos antes dessa etapa. A divisão de splits e a construção final dos
-candidatos A/B/C acontecem depois dela. Este plano não congela proporções de
-split nem inventaria conjuntos de benchmark.
+D1 e a investigação D2–D2d foram concluídas. Os cientistas aprovaram zero
+remoções por near dedup na primeira execução; a recomendação seletiva B de D2d
+é somente uma direção futura. Essa decisão não afirma que o corpus esteja
+livre de near duplicates. A decontaminação permanece separada e é a próxima
+etapa C1; seu inventário e política propostos estão em
+[`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md).
+Splits e construção final dos candidatos A/B/C continuam posteriores à
+decontaminação e sujeitos aos contratos científicos aprovados.
 
 ---
 
@@ -498,8 +500,11 @@ O estudo de composição alcançou todas as definições conceituais, metodológ
 - `configs/corpus_mix_b.yaml`
 - `configs/corpus_mix_c.yaml`
 
-### 10.2 Próximo Passo Concreto
-Quando solicitado:
-1. Criar os três arquivos declarativos `configs/corpus_mix_*.yaml` contendo os pesos provisórios em palavras, revisões pinned e regras de baldes do GigaVerbo;
-2. Iniciar a materialização seletiva das fontes primárias em `/mnt/data/cambacica-base-180m/raw/` e a extração filtrada dos row groups elegíveis do GigaVerbo-v2;
-3. Gerar os manifests normalizados correspondentes e executar o pipeline de deduplicação global exata e aproximada.
+### 10.2 Estado atual do C1
+
+As configurações A/B/C, materialização, normalização e D1 exact deduplication
+foram concluídas. D2–D2d também foram concluídos, e near dedup foi fechado em
+zero remoções para a primeira execução. A próxima etapa é a decontaminação de
+benchmarks após aprovação científica do plano. Splits e construção final dos
+candidatos A/B/C continuam posteriores; o orçamento de tokens será recalculado
+com o tokenizer congelado no C2.

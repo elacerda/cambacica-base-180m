@@ -33,6 +33,13 @@ receita de treinamento ainda **não estão congelados**.
 
 A primeira etapa é caracterizar e validar essas decisões experimentalmente.
 
+**Status C1:** D1 está COMPLETE / PASS; a decisão científica foi aprovada para
+preservar todos os registros pós-D1, com zero remoções por near dedup na
+primeira execução. D2–D2d estão concluídos. A decontaminação de benchmarks é a
+próxima etapa e ainda não foi executada; C1 segue **IN PROGRESS** e C2 está
+**PENDING**. Consulte [a decisão final de near dedup](docs/C1_NEAR_DEDUP_FINAL_DECISION.md)
+e [o plano de decontaminação](docs/C1_BENCHMARK_DECONTAMINATION_PLAN.md).
+
 ## Princípios
 
 1. **Português nativo**  

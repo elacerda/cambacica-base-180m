@@ -4,7 +4,7 @@
 
 Gate: **C1 — corpus**
 
-Status: **EM DEFINIÇÃO**
+Status: **IN PROGRESS**
 
 Este documento registra a política científica inicial para o corpus de
 pretraining do `cambacica-base-180m`.
@@ -323,7 +323,7 @@ remoção de boilerplate quando aplicável
         ↓
 deduplicação exata
         ↓
-deduplicação aproximada
+decisão de primeira execução: preservar todos os registros pós-exato
         ↓
 decontaminação dos benchmarks
         ↓
@@ -336,8 +336,17 @@ manifesto congelado
 tokenização / formato de treinamento
 ```
 
-A ordem poderá ser refinada se houver uma justificativa científica explícita,
-mas duplicatas não devem poder atravessar os splits.
+A decisão científica para a primeira execução é não remover near duplicates;
+consulte [C1_NEAR_DEDUP_FINAL_DECISION.md](C1_NEAR_DEDUP_FINAL_DECISION.md).
+Isso não afirma que o corpus esteja livre de near duplicates. A decontaminação
+de benchmarks segue como etapa separada.
+
+Os splits devem ser determinísticos e não podem separar registros com o mesmo
+conteúdo normalizado exato. Como near copies permanecem no corpus e o censo D2c
+tem limites de cobertura, a regra proposta para a primeira execução agrupa
+conteúdos exatos e documenta o risco residual de near copies. Essa regra precisa
+ser aprovada antes de criar os splits; ela não reabre a decisão de zero
+remoções por near dedup.
 
 A normalização bruta do Gate C1 está congelada em
 [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0. Ela mantém
@@ -389,24 +398,18 @@ ser medidos e documentados.
 
 A deduplicação do Cambacica deve ser explicitamente reproduzível.
 
-O baseline deve incluir:
+A deduplicação exata D1 foi concluída usando o contrato de hash do conteúdo
+normalizado. A investigação de near duplicates D2–D2d também foi concluída.
+Para a primeira execução, a política aprovada é preservar todos os registros
+pós-D1 e fazer zero remoções por near dedup; a decisão final e suas evidências
+estão em [`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md).
+Ainda existem near duplicates, e não se estima remoção em escala de produção.
 
-1. deduplicação exata por hash de conteúdo normalizado;
-2. deduplicação aproximada baseada em MinHash/LSH ou método equivalente;
-3. deduplicação global entre fontes, e não somente dentro de cada fonte.
-
-Os parâmetros exatos ainda não estão congelados.
-
-A implementação deverá produzir estatísticas de:
-
-- documentos antes e depois;
-- tokens antes e depois;
-- duplicatas intra-fonte;
-- duplicatas inter-fonte;
-- clusters de deduplicação por origem.
-
-Deduplicação semântica por embeddings não é requisito inicial. Pode ser testada
-como ablação em subconjuntos menores.
+Qualquer trabalho futuro de near dedup exige aprovação para um novo escopo de
+treinamento. A direção científica seria remoção seletiva apenas quando houver
+identidade documental, equivalência substantiva e relação direta verificada
+com o registro proprietário. Deduplicação semântica por embeddings não faz
+parte do contrato da primeira execução.
 
 ## 13. Decontaminação
 
@@ -416,19 +419,21 @@ congelamento final do corpus.
 O corpus deve ser analisado contra seus conjuntos de validação e teste antes da
 criação dos splits finais.
 
-O método exato de matching ainda será definido, mas deve ser suficientemente
-reproduzível para que possamos responder quais documentos foram removidos ou
-marcados e por quê.
+O método de matching está planejado em
+[C1_BENCHMARK_DECONTAMINATION_PLAN.md](C1_BENCHMARK_DECONTAMINATION_PLAN.md)
+e requer aprovação científica antes da execução. Deve ser suficientemente
+reproduzível para responder quais documentos foram marcados ou excluídos e por
+quê.
 
 A caracterização de overlap, por si só, não será considerada equivalente a uma
 etapa de decontaminação.
 
 ## 14. Split de treino, validação e teste
 
-O split final deve ocorrer **depois da deduplicação global e da decontaminação**.
-
-Esse requisito evita que near-duplicates de um documento apareçam ao mesmo
-tempo em treino e validação/teste.
+O split final deve ocorrer **depois da deduplicação exata e da decontaminação**.
+Na primeira execução, near copies serão preservadas. O contrato proposto agrupa
+conteúdos exatos sob o mesmo split e relata que não há garantia corpus-wide de
+que near copies não cruzem splits. A proposta aguarda aprovação científica.
 
 Os splits deverão ser determinísticos e reproduzíveis a partir do manifesto.
 
@@ -508,16 +513,20 @@ C1 poderá ser fechado quando:
 - licença e condições de uso estiverem registradas;
 - a política de português nativo estiver implementada e validada por amostra;
 - os filtros de qualidade estiverem documentados;
-- a deduplicação global estiver implementada e medida;
-- o conjunto de benchmarks para decontaminação estiver definido;
-- o split final estiver especificado;
+- a deduplicação exata global estiver verificada e a decisão de near dedup da
+  primeira execução estiver aprovada (zero remoções; produção não executada por
+  decisão científica);
+- o inventário e a política de decontaminação de benchmarks estiverem
+  aprovados, e a execução e verificação estiverem concluídas;
+- o contrato e o split train/validation/test estiverem aprovados e
+  reproduzíveis;
 - o manifesto do corpus puder ser reproduzido a partir do código e das
   revisões registradas;
 - o tamanho real do corpus estiver conhecido;
 - a estratégia A ou B, ou uma variante delas, tiver sido escolhida com base nas
   medições.
 
-Até lá, C1 permanece **EM DEFINIÇÃO**.
+Até lá, C1 permanece **IN PROGRESS** e C2 permanece **PENDING**.
 
 ## 19. Questões abertas
 

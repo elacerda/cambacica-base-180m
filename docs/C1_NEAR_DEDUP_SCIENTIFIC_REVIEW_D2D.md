@@ -1,14 +1,19 @@
 # Gate C1 Near-Dedup Scientific Review (D2d)
 
-**Review status:** COMPLETE; generated assessments remain PROVISIONAL  
+**Review status:** COMPLETE; generated assessments remain PROVISIONAL
 **Decision proposal:** **B — selective near-deduplication**, limited to two curated/web relationship classes pending human verification
-**Production policy:** not ready to freeze; limited human verification is required  
-**Near-dedup production:** NOT RUN  
-**Benchmark decontamination:** PENDING  
-**Input:** post-exact corpus, 21,603,689 retained records  
-**Exact manifest SHA-256:** `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`  
-**D2c census:** `/mnt/data/cambacica-base-180m/dedup-census/near-v1/`  
+**First-run policy:** preserve all post-D1 records; zero near-dedup removals
+**Near-dedup production:** NOT RUN BY DESIGN
+**Benchmark decontamination:** NEXT / NOT RUN
+**Input:** post-exact corpus, 21,603,689 retained records
+**Exact manifest SHA-256:** `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`
+**D2c census:** `/mnt/data/cambacica-base-180m/dedup-census/near-v1/`
 **D2d review packet:** `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`
+
+**First-training operational decision:** preserve every post-D1 record; zero
+near-dedup removals. This supersedes the provisional D2d policy proposal for
+the first run only. The proposal B remains a future direction; see
+[`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md).
 
 ## Scope and method
 
@@ -241,6 +246,10 @@ relationships. No new corpus-scale experiment is proposed.
 deterministic selection/split rules, and output checksums. `generate_review.py`
 rebuilds the packet, labels, policy matrix, sample simulation, direct-edge
 removal list, and summary from the completed D2c Parquet/CSV/JSON artifacts.
-The exact-dedup output was not modified. Near-dedup production was not run;
-benchmark decontamination remains pending; C1 remains **IN PROGRESS** and C2
-remains **PENDING**.
+The exact-dedup output was not modified. The scientists subsequently closed
+near-deduplication at zero removals for the first run; proposal B remains only
+a future direction. Near-dedup production was not run by design. Benchmark
+decontamination is **NEXT / NOT RUN**; C1 remains **IN PROGRESS** and C2
+remains **PENDING**. See
+[`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md) for the
+approved operational decision.

@@ -168,11 +168,15 @@ are gross pre-deduplication capacities; post-deduplication volume is not
 estimated here. No candidate corpus is constructed here.
 Capacity floors use exact rational forms of the configured decimal shares.
 
-The downstream C1 order is frozen as `normalized → exact dedup → near dedup →
-benchmark decontamination → split → final A/B/C construction`. The exact stage
-contract is versioned in [`C1_EXACT_DEDUP_SPEC.md`](C1_EXACT_DEDUP_SPEC.md).
-Benchmark inventory and matching rules, near-dedup thresholds, split policy,
-and final mix selection remain later C1 decisions.
+The downstream C1 order is `normalized → exact dedup → first-run near-dedup
+preserve-all decision → benchmark decontamination → split → final A/B/C
+construction`. D1 is complete. D2–D2d are complete, and near-dedup removals
+are approved at zero for the first run; see
+[`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md).
+Benchmark decontamination is next; its proposed inventory and matching plan
+are in
+[`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md).
+Split policy and final mix selection remain later C1 decisions.
 
 ## Production commands
 
