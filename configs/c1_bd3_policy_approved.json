@@ -1,0 +1,34 @@
+{
+  "anchor_ngram_tokens": 13,
+  "automatic_exclusions": false,
+  "calibration_scope": "deterministic synthetic and selected benchmark-derived controls",
+  "commit_every_documents": 256,
+  "distinctive_coverage": 0.8,
+  "document_chunk_tokens": 8192,
+  "exact_seed_tokens": 8,
+  "freeze_for_bd3": true,
+  "limitations": [
+    "Fixture results do not estimate population precision, recall, or corpus contamination prevalence.",
+    "max_ngram_df=100 is a candidate cutoff, not calibrated against corpus-wide document frequencies.",
+    "The two-rare-anchor and 80% coverage rule needs a larger, blinded source-stratified calibration before BD3.",
+    "Semantic paraphrase, translation, OCR/image text, and most answer-only inference remain outside detector coverage."
+  ],
+  "matcher_version": "c1-bd2-token-anchor-v2",
+  "max_benchmark_item_df": 2,
+  "max_exact_question_document_frequency": 100,
+  "max_ngram_df": 100,
+  "minimum_contiguous_tokens": 50,
+  "minimum_question_tokens": 6,
+  "minimum_rare_anchors": 2,
+  "normalization_version": "nfc-casefold-unicode-word-offsets-v1",
+  "policy_version": "c1-bd3-readonly-approved-20261009-v1",
+  "question_answer_max_token_gap": 128,
+  "scientist_approval": {
+    "approver": "eduardolacerda",
+    "date": "2026-10-09",
+    "exclusions_authorized": false,
+    "reference": "C1-BD3-2026-10-09-scientific-approval",
+    "scope": "Read-only benchmark contamination candidate detection"
+  },
+  "status": "SCIENTIST_APPROVED_FOR_BD3"
+}
