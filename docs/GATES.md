@@ -56,7 +56,7 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização e caracterização concluídas; D1 COMPLETE / PASS; D2–D2d COMPLETE; near dedup da primeira execução APPROVED / CLOSED com zero remoções; C1-BD1 APPROVED; C1-BD2 snapshot/calibration COMPLETE; BD3 e BD4 NOT RUN.
+- normalização e caracterização concluídas; D1 COMPLETE / PASS; D2–D2d COMPLETE; near dedup da primeira execução APPROVED / CLOSED com zero remoções; C1-BD1 APPROVED; C1-BD2 snapshot/calibration COMPLETE; C1-BD2.5 PREFLIGHT COMPLETE; C1-BD3 NOT RUN / NOT APPROVED; C1-BD4 NOT RUN.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -76,7 +76,7 @@ Progresso atual:
 - revisão científica e avaliação de política (D2d): **COMPLETE**, com packet em `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`;
 - decisão científica de near dedup para a primeira execução: **APPROVED / CLOSED**; preservar todos os registros pós-D1, com zero remoções por near dedup. A recomendação B de D2d permanece somente como direção futura. Veja [`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md);
 - produção de near dedup: **NOT RUN BY DESIGN**; não é um blocker para a decontaminação de benchmarks;
-- decontaminação de benchmarks: **BD1 APPROVED; BD2 COMPLETE; BD3 NOT RUN; BD4 NOT RUN**; aprovação em [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), resultados em [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md) e plano em [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
+- decontaminação de benchmarks: **BD1 APPROVED; BD2 COMPLETE; BD2.5 PREFLIGHT COMPLETE; BD3 NOT RUN / NOT APPROVED; BD4 NOT RUN**; aprovação em [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), resultados BD2 em [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md), preflight em [`C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md`](C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md) e plano em [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:

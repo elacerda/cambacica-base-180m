@@ -258,6 +258,124 @@ def test_contiguous_partial_passage_embedded_in_a_longer_document(tmp_path):
         assert span.anchor_document_frequency == 1
 
 
+def _unique_passage_tokens(size: int) -> list[str]:
+    return [f"passagetoken{index:04d}" for index in range(size)]
+
+
+def test_fragmented_anchors_across_a_long_document_do_not_combine(tmp_path):
+    tokens = _unique_passage_tokens(1000)
+    field = _field("fragmented-1", "passage", " ".join(tokens))
+    fragments = [tokens[index : index + 40] for index in range(0, 800, 50)]
+    pieces = []
+    for index, fragment in enumerate(fragments):
+        if index:
+            pieces.extend(f"unrelated{index}_{word}" for word in range(2200))
+        pieces.extend(fragment)
+    document = CorpusDocument("fragmented", " ".join(pieces))
+
+    _accounting, results = _scan([field], [document], tmp_path)
+
+    assert results == []
+
+
+def test_fragments_in_the_wrong_order_do_not_form_coverage(tmp_path):
+    tokens = _unique_passage_tokens(1200)
+    field = _field("wrong-order-1", "passage", " ".join(tokens))
+    blocks = [tokens[index : index + 40] for index in range(0, 1200, 240)]
+    pieces = []
+    for index, block in enumerate(reversed(blocks)):
+        if index:
+            pieces.extend(f"spacer{index}_{word}" for word in range(1200))
+        pieces.extend(block)
+
+    _accounting, results = _scan(
+        [field], [CorpusDocument("wrong-order", " ".join(pieces))], tmp_path
+    )
+
+    assert results == []
+
+
+def test_repeated_boilerplate_at_distant_positions_does_not_cover_item(tmp_path):
+    repeated = _unique_passage_tokens(40)
+    middle = _unique_passage_tokens(20)
+    benchmark = repeated + middle + repeated
+    field = _field("boilerplate-1", "passage", " ".join(benchmark))
+    document_tokens = repeated + [f"distant{index}" for index in range(2500)] + repeated
+
+    _accounting, results = _scan(
+        [field],
+        [CorpusDocument("boilerplate", " ".join(document_tokens))],
+        tmp_path,
+    )
+
+    assert results == []
+
+
+def test_two_isolated_anchors_do_not_establish_substantial_local_overlap(tmp_path):
+    tokens = _unique_passage_tokens(120)
+    field = _field("two-anchors-1", "passage", " ".join(tokens))
+    document = CorpusDocument(
+        "two-anchors", " ".join(tokens[:13] + ["separator"] * 30 + tokens[-13:])
+    )
+
+    _accounting, results = _scan([field], [document], tmp_path)
+
+    assert results == []
+
+
+def test_small_insertions_and_deletions_keep_a_coherent_alignment(tmp_path):
+    tokens = _unique_passage_tokens(300)
+    field = _field("edited-1", "passage", " ".join(tokens))
+    edited = []
+    for index, token in enumerate(tokens):
+        if index not in {61, 122, 183, 244}:
+            edited.append(token)
+        if index in {39, 79, 119, 159, 199, 239, 279}:
+            edited.append(f"inserted{index}")
+    document = CorpusDocument("edited-copy", " ".join(edited))
+    policy = CandidatePolicy(document_chunk_tokens=128)
+
+    _accounting, results = _scan([field], [document], tmp_path, policy)
+
+    hit = next(result for result in results if result.doc_id == "edited-copy")
+    assert hit.decision_rule == "distinctive_anchor_coverage"
+    corpus_tokens = [token.text for token in tokenize_with_offsets(document.text)]
+    benchmark_tokens = [
+        token.text for token in tokenize_with_offsets(field.original_text)
+    ]
+    assert (
+        corpus_tokens[hit.corpus_token_start : hit.corpus_token_end]
+        == (benchmark_tokens[hit.benchmark_token_start : hit.benchmark_token_end])
+    )
+    assert hit.distinctive_token_coverage >= policy.distinctive_coverage
+    assert hit.contiguous_tokens < policy.minimum_contiguous_tokens
+
+
+def test_exact_complete_item_is_preserved_in_a_multi_window_document(tmp_path):
+    complete_item = " ".join(_unique_passage_tokens(90))
+    field = _field("long-exact-1", "complete_item", complete_item)
+    prefix = [f"prefix{index}" for index in range(10_000)]
+    suffix = [f"suffix{index}" for index in range(10_000)]
+    document = CorpusDocument(
+        "large-exact",
+        " ".join(prefix + [complete_item] + suffix),
+    )
+    policy = CandidatePolicy(document_chunk_tokens=512)
+
+    matcher = BenchmarkMatcher([field], policy)
+    with matcher.start_run(scratch_dir=tmp_path) as run:
+        accounting = run.scan([document])
+        results = list(run.iter_results())
+
+    exact_hit = next(
+        result for result in results if result.field_role == "complete_item"
+    )
+    assert exact_hit.decision_rule == "exact_complete_item"
+    assert exact_hit.exact_match is True
+    assert accounting.documents_seen == 1
+    assert run.largest_document_tokens > 20_000
+
+
 def test_empty_anchor_evidence_parquet_has_stable_schema(tmp_path):
     output = tmp_path / "candidate_anchor_evidence.parquet"
     assert _write_anchor_evidence(output, iter(())) == 0

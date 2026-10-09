@@ -7,13 +7,16 @@ pinned benchmark index and one corpus document at a time.
 
 from __future__ import annotations
 
+from collections import Counter, deque
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import sqlite3
 import tempfile
+import time
 import unicodedata
 from typing import Any, Iterable, Iterator
 
@@ -280,7 +283,7 @@ class BenchmarkMatcher:
         self._anchor_item_df: dict[str, int] = {}
         self._question_item_df: dict[tuple[str, ...], int] = {}
         self._exact_seed_lookup: dict[tuple[str, ...], list[str]] = {}
-        self._exact_seed_lengths: tuple[int, ...] = ()
+        self._short_exact_seed_lookup: dict[str, dict[tuple[str, ...], list[str]]] = {}
         self._field_distinctive_positions: dict[str, set[int]] = {}
         self._question_answer_links: dict[
             str, tuple[str, tuple[str, ...], str | None]
@@ -340,9 +343,13 @@ class BenchmarkMatcher:
                 question_fields.setdefault(token_values, set()).add(field.example_id)
             seed_length = min(self.policy.exact_seed_tokens, len(token_values))
             if seed_length:
-                self._exact_seed_lookup.setdefault(
-                    token_values[:seed_length], []
-                ).append(field.field_id)
+                seed = token_values[:seed_length]
+                if seed_length == self.policy.exact_seed_tokens:
+                    self._exact_seed_lookup.setdefault(seed, []).append(field.field_id)
+                else:
+                    self._short_exact_seed_lookup.setdefault(seed[0], {}).setdefault(
+                        seed, []
+                    ).append(field.field_id)
             if field.field_role not in self._ANCHOR_ROLES:
                 continue
             ngram_size = self.policy.anchor_ngram_tokens
@@ -373,11 +380,11 @@ class BenchmarkMatcher:
                 if self._anchor_item_df[digest] <= self.policy.max_benchmark_item_df:
                     distinctive_positions.update(range(position, position + ngram_size))
             self._field_distinctive_positions[field_id] = distinctive_positions
-        self._exact_seed_lengths = tuple(
-            sorted({len(seed) for seed in self._exact_seed_lookup})
-        )
         for field_ids in self._exact_seed_lookup.values():
             field_ids.sort()
+        for seed_map in self._short_exact_seed_lookup.values():
+            for field_ids in seed_map.values():
+                field_ids.sort()
         for bucket in self._anchor_lookup.values():
             for positions in bucket.values():
                 positions.sort()
@@ -406,9 +413,17 @@ class BenchmarkMatcher:
             )
 
     def start_run(
-        self, scratch_dir: Path | str | None = None, keep_scratch: bool = False
+        self,
+        scratch_dir: Path | str | None = None,
+        keep_scratch: bool = False,
+        profile: bool = False,
     ) -> MatcherRun:
-        return MatcherRun(self, scratch_dir=scratch_dir, keep_scratch=keep_scratch)
+        return MatcherRun(
+            self,
+            scratch_dir=scratch_dir,
+            keep_scratch=keep_scratch,
+            profile=profile,
+        )
 
 
 class MatcherRun:
@@ -419,10 +434,21 @@ class MatcherRun:
         matcher: BenchmarkMatcher,
         scratch_dir: Path | str | None = None,
         keep_scratch: bool = False,
+        profile: bool = False,
     ) -> None:
         self.matcher = matcher
         self.policy = matcher.policy
         self.keep_scratch = keep_scratch
+        self.profile = profile
+        self._profile_timings = {
+            "sqlite_accounting_seconds": 0.0,
+            "tokenization_seconds": 0.0,
+            "anchor_lookup_and_evidence_write_seconds": 0.0,
+            "exact_lookup_and_evidence_write_seconds": 0.0,
+            "sqlite_frequency_update_seconds": 0.0,
+            "sqlite_commit_seconds": 0.0,
+            "finalization_seconds": 0.0,
+        }
         if scratch_dir is None:
             scratch = Path(tempfile.gettempdir())
         else:
@@ -506,6 +532,8 @@ class MatcherRun:
         )
         self.connection.commit()
         self._documents_seen = 0
+        self._normalized_words_seen = 0
+        self._last_document_tokens = 0
         self._candidate_fields = 0
         self._largest_document_tokens = 0
         self._shards: dict[str, tuple[int, Any]] = {}
@@ -526,6 +554,7 @@ class MatcherRun:
             raise ValueError("Corpus document requires a stable record ID")
         if not isinstance(document.text, str):
             raise TypeError("Corpus document text must be a string")
+        accounting_started = time.perf_counter() if self.profile else 0.0
         try:
             self.connection.execute(
                 "INSERT INTO seen_docs(doc_id) VALUES (?)", (document.doc_id,)
@@ -538,6 +567,10 @@ class MatcherRun:
         digest.update(len(id_bytes).to_bytes(8, "big"))
         digest.update(id_bytes)
         self._shards[document.source_shard] = (count + 1, digest)
+        if self.profile:
+            self._profile_timings["sqlite_accounting_seconds"] += (
+                time.perf_counter() - accounting_started
+            )
 
         # Pending evidence is local to this document until its distinct anchor
         # frequencies are known. If an anchor crosses the configured cap here,
@@ -549,16 +582,31 @@ class MatcherRun:
             self.matcher._document_chunk_overlap_tokens + 1,
         )
         rare_evidence_written = False
-        for global_start, tokens in _iter_token_chunks(
-            document.text,
-            chunk_tokens,
-            self.matcher._document_chunk_overlap_tokens,
-        ):
+        document_tokens = 0
+        token_chunks = iter(
+            _iter_token_chunks(
+                document.text,
+                chunk_tokens,
+                self.matcher._document_chunk_overlap_tokens,
+            )
+        )
+        while True:
+            phase_started = time.perf_counter() if self.profile else 0.0
+            try:
+                global_start, tokens = next(token_chunks)
+            except StopIteration:
+                break
+            if self.profile:
+                self._profile_timings["tokenization_seconds"] += (
+                    time.perf_counter() - phase_started
+                )
             token_values = tuple(token.text for token in tokens)
             self._largest_document_tokens = max(
                 self._largest_document_tokens, global_start + len(tokens)
             )
+            document_tokens = max(document_tokens, global_start + len(tokens))
 
+            phase_started = time.perf_counter() if self.profile else 0.0
             for position in range(max(0, len(token_values) - ngram_size + 1)):
                 gram = token_values[position : position + ngram_size]
                 bucket = self.matcher._anchor_lookup.get(hash(gram))
@@ -615,21 +663,25 @@ class MatcherRun:
                             for field_id, benchmark_start in matched_field_positions
                         ],
                     )
+            if self.profile:
+                self._profile_timings["anchor_lookup_and_evidence_write_seconds"] += (
+                    time.perf_counter() - phase_started
+                )
 
             # The overlap covers every complete benchmark field and any allowed
             # question-answer gap, including matches that cross a chunk boundary.
+            phase_started = time.perf_counter() if self.profile else 0.0
             for position in range(len(token_values)):
-                for seed_length in self.matcher._exact_seed_lengths:
-                    if seed_length > len(token_values) - position:
-                        continue
-                    seed = token_values[position : position + seed_length]
-                    candidate_ids = self.matcher._exact_seed_lookup.get(seed)
-                    if not candidate_ids:
-                        continue
+                remaining_tokens = len(token_values) - position
+                if remaining_tokens >= self.policy.exact_seed_tokens:
+                    seed = token_values[
+                        position : position + self.policy.exact_seed_tokens
+                    ]
+                    candidate_ids = self.matcher._exact_seed_lookup.get(seed, ())
                     for field_id in candidate_ids:
                         field = self.matcher.fields[field_id]
                         field_values = self.matcher.field_token_values[field_id]
-                        if len(field_values) > len(token_values) - position:
+                        if len(field_values) > remaining_tokens:
                             continue
                         if (
                             token_values[position : position + len(field_values)]
@@ -663,6 +715,62 @@ class MatcherRun:
                                 global_start,
                             )
 
+                short_seed_map = self.matcher._short_exact_seed_lookup.get(
+                    token_values[position]
+                )
+                if not short_seed_map:
+                    continue
+                for short_seed, candidate_ids in short_seed_map.items():
+                    seed_length = len(short_seed)
+                    if seed_length > remaining_tokens:
+                        continue
+                    if token_values[position : position + seed_length] != short_seed:
+                        continue
+                    for field_id in candidate_ids:
+                        field = self.matcher.fields[field_id]
+                        field_values = self.matcher.field_token_values[field_id]
+                        if len(field_values) > remaining_tokens:
+                            continue
+                        if (
+                            token_values[position : position + len(field_values)]
+                            != field_values
+                        ):
+                            continue
+                        end = position + len(field_values)
+                        global_position = global_start + position
+                        self.connection.execute(
+                            """INSERT OR IGNORE INTO exact_evidence
+                               (doc_id, field_id, corpus_start, corpus_end,
+                                corpus_char_start, corpus_char_end)
+                               VALUES (?, ?, ?, ?, ?, ?)""",
+                            (
+                                document.doc_id,
+                                field_id,
+                                global_position,
+                                global_position + len(field_values),
+                                tokens[position].start,
+                                tokens[end - 1].end,
+                            ),
+                        )
+                        if field.field_role == "question":
+                            self._record_nearby_answer(
+                                document.doc_id,
+                                field_id,
+                                position,
+                                end,
+                                tokens,
+                                token_values,
+                                global_start,
+                            )
+            if self.profile:
+                self._profile_timings["exact_lookup_and_evidence_write_seconds"] += (
+                    time.perf_counter() - phase_started
+                )
+
+        self._last_document_tokens = document_tokens
+        self._normalized_words_seen += document_tokens
+
+        phase_started = time.perf_counter() if self.profile else 0.0
         for anchor in sorted(found):
             row = self.connection.execute(
                 "SELECT document_frequency, frequent FROM anchor_frequency WHERE anchor=?",
@@ -703,7 +811,12 @@ class MatcherRun:
                 "DELETE FROM pending_anchor_evidence WHERE anchor=? AND doc_id=?",
                 (anchor, document.doc_id),
             )
+        if self.profile:
+            self._profile_timings["sqlite_frequency_update_seconds"] += (
+                time.perf_counter() - phase_started
+            )
 
+        phase_started = time.perf_counter() if self.profile else 0.0
         if (
             rare_evidence_written
             or self.connection.execute(
@@ -725,8 +838,17 @@ class MatcherRun:
                     _text_digest(document.text),
                 ),
             )
+        if self.profile:
+            self._profile_timings["sqlite_accounting_seconds"] += (
+                time.perf_counter() - phase_started
+            )
         if self._documents_seen % self.policy.commit_every_documents == 0:
+            phase_started = time.perf_counter() if self.profile else 0.0
             self.connection.commit()
+            if self.profile:
+                self._profile_timings["sqlite_commit_seconds"] += (
+                    time.perf_counter() - phase_started
+                )
 
     def _record_nearby_answer(
         self,
@@ -788,9 +910,24 @@ class MatcherRun:
         try:
             for document in documents:
                 self.add_document(document)
+            return self.finish()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def finish(self) -> ScanAccounting:
+        """Finalize results after ``add_document`` or a bounded manual pass."""
+        if self._finished or self._closed:
+            raise RuntimeError("Matcher run is already finished or closed")
+        try:
+            phase_started = time.perf_counter() if self.profile else 0.0
             self.connection.commit()
             self._finalize_hits()
             self.connection.commit()
+            if self.profile:
+                self._profile_timings["finalization_seconds"] += (
+                    time.perf_counter() - phase_started
+                )
             self._finished = True
             accounting = tuple(
                 ShardAccounting(shard, count, digest.hexdigest())
@@ -893,6 +1030,170 @@ class MatcherRun:
             benchmark_char_end=benchmark_char_end,
         )
 
+    def _best_coherent_alignment(
+        self, doc_id: str, field_id: str
+    ) -> tuple[int, int, float, int | None, int | None, tuple[int, ...] | None]:
+        """Return the strongest local, order-consistent anchor alignment.
+
+        The offset band is relative to the benchmark field length. Its width
+        follows the existing coverage threshold: a field requiring 80% coverage
+        can tolerate up to 25% offset drift across the field. This is not an
+        absolute document-distance limit; it prevents distant corpus fragments
+        from being combined into one coverage score.
+        """
+        field_values = self.matcher.field_token_values[field_id]
+        distinctive = self.matcher._field_distinctive_positions.get(field_id, set())
+        if not field_values or not distinctive:
+            return 0, 0, 0.0, None, None, None
+
+        drift_limit = math.ceil(
+            (1.0 / self.policy.distinctive_coverage - 1.0) * len(field_values)
+        )
+        evidence_cursor = self.connection.execute(
+            """SELECT e.anchor, e.benchmark_start, e.corpus_start,
+                      e.corpus_char_start, e.corpus_char_end,
+                      f.document_frequency, e.corpus_start-e.benchmark_start
+               FROM anchor_evidence e
+               JOIN anchor_frequency f ON f.anchor=e.anchor
+               WHERE e.doc_id=? AND e.field_id=? AND f.frequent=0
+               ORDER BY e.corpus_start-e.benchmark_start,
+                        e.benchmark_start, e.corpus_start, e.anchor""",
+            (doc_id, field_id),
+        )
+
+        window: deque[tuple[int, int, int, int, int, str, int]] = deque()
+        position_counts = [0] * len(field_values)
+        anchor_counts: Counter[str] = Counter()
+        frequency_counts: Counter[int] = Counter()
+        covered_positions = 0
+        best_score = (0, 0)
+        best_delta: int | None = None
+        ngram_size = self.policy.anchor_ngram_tokens
+
+        def update_positions(start: int, amount: int) -> None:
+            nonlocal covered_positions
+            for token_position in range(start, start + ngram_size):
+                if token_position not in distinctive:
+                    continue
+                previous = position_counts[token_position]
+                position_counts[token_position] += amount
+                if previous == 0 and amount > 0:
+                    covered_positions += 1
+                elif previous == 1 and amount < 0:
+                    covered_positions -= 1
+
+        for row in evidence_cursor:
+            anchor, benchmark_start, corpus_start = row[:3]
+            char_start, char_end, document_frequency, delta = row[3:]
+            item = (
+                int(delta),
+                int(benchmark_start),
+                int(corpus_start),
+                int(char_start),
+                int(char_end),
+                str(anchor),
+                int(document_frequency),
+            )
+            while window and item[0] - window[0][0] > drift_limit:
+                expired = window.popleft()
+                update_positions(expired[1], -1)
+                anchor_counts[expired[5]] -= 1
+                if not anchor_counts[expired[5]]:
+                    del anchor_counts[expired[5]]
+                frequency_counts[expired[6]] -= 1
+                if not frequency_counts[expired[6]]:
+                    del frequency_counts[expired[6]]
+
+            window.append(item)
+            update_positions(item[1], 1)
+            anchor_counts[item[5]] += 1
+            frequency_counts[item[6]] += 1
+            score = (covered_positions, len(anchor_counts))
+            if score > best_score:
+                best_score = score
+                best_delta = item[0]
+
+        if best_delta is None:
+            return 0, 0, 0.0, None, None, None
+
+        # Reconstruct a monotone benchmark-to-corpus chain inside the winning
+        # offset band. At each benchmark position, the earliest corpus
+        # occurrence after the last selected anchor leaves the most room for
+        # later anchors and avoids counting reordered fragments.
+        alignment_cursor = self.connection.execute(
+            """SELECT e.anchor, e.benchmark_start, e.corpus_start,
+                      e.corpus_char_start, e.corpus_char_end,
+                      f.document_frequency
+               FROM anchor_evidence e
+               JOIN anchor_frequency f ON f.anchor=e.anchor
+               WHERE e.doc_id=? AND e.field_id=? AND f.frequent=0
+                 AND e.corpus_start-e.benchmark_start BETWEEN ? AND ?
+               ORDER BY e.benchmark_start, e.corpus_start, e.anchor""",
+            (
+                doc_id,
+                field_id,
+                best_delta - drift_limit,
+                best_delta,
+            ),
+        )
+        aligned_positions: set[int] = set()
+        aligned_anchors: set[str] = set()
+        aligned_frequencies: list[int] = []
+        representative: tuple[int, ...] | None = None
+        previous_corpus_start = -1
+        current_benchmark_start: int | None = None
+        selected_for_benchmark: tuple[Any, ...] | None = None
+
+        def select_current() -> None:
+            nonlocal previous_corpus_start, representative
+            if selected_for_benchmark is None:
+                return
+            anchor, benchmark_start, corpus_start = selected_for_benchmark[:3]
+            if int(corpus_start) <= previous_corpus_start:
+                return
+            previous_corpus_start = int(corpus_start)
+            if representative is None:
+                representative = tuple(
+                    int(value) for value in selected_for_benchmark[1:5]
+                )
+            aligned_anchors.add(str(anchor))
+            aligned_frequencies.append(int(selected_for_benchmark[5]))
+            aligned_positions.update(
+                token_position
+                for token_position in range(
+                    int(benchmark_start), int(benchmark_start) + ngram_size
+                )
+                if token_position in distinctive
+            )
+
+        for row in alignment_cursor:
+            anchor, benchmark_start, corpus_start = row[:3]
+            if (
+                current_benchmark_start is not None
+                and int(benchmark_start) != current_benchmark_start
+            ):
+                select_current()
+                selected_for_benchmark = None
+            current_benchmark_start = int(benchmark_start)
+            if int(corpus_start) > previous_corpus_start and (
+                selected_for_benchmark is None
+                or int(corpus_start) < int(selected_for_benchmark[2])
+            ):
+                selected_for_benchmark = row
+        select_current()
+
+        coverage = len(aligned_positions) / len(distinctive)
+        df_min = min(aligned_frequencies) if aligned_frequencies else None
+        df_max = max(aligned_frequencies) if aligned_frequencies else None
+        return (
+            len(aligned_positions),
+            len(aligned_anchors),
+            coverage,
+            df_min,
+            df_max,
+            representative,
+        )
+
     def _finalize_hits(self) -> None:
         policy = self.policy
         exact_rows = self.connection.execute(
@@ -964,19 +1265,8 @@ class MatcherRun:
         current_doc: str | None = None
         current_field: str | None = None
         anchor_ids: set[str] = set()
-        anchor_document_frequencies: dict[str, int] = {}
-        distinctive_positions: set[int] = set()
-        covered_tokens = 0
-        cover_start: int | None = None
-        cover_end: int | None = None
         active_span: tuple[int, int, int, int, int, int] | None = None
         best_span: tuple[int, int, int, int, int, int] | None = None
-        first_span: tuple[int, int, int, int, int, int] | None = None
-
-        def count_distinctive(start: int, end: int) -> int:
-            return sum(
-                1 for position in range(start, end) if position in distinctive_positions
-            )
 
         def flush_active() -> None:
             nonlocal active_span, best_span
@@ -988,18 +1278,10 @@ class MatcherRun:
             active_span = None
 
         def add_evidence(row: tuple[Any, ...]) -> None:
-            nonlocal cover_start, cover_end, covered_tokens, active_span, first_span
-            anchor, b_start, d_start, char_start, char_end, document_frequency = row
+            nonlocal active_span
+            anchor, b_start, d_start, char_start, char_end, _document_frequency = row
             anchor_ids.add(anchor)
-            anchor_document_frequencies.setdefault(anchor, int(document_frequency))
             interval_end = b_start + policy.anchor_ngram_tokens
-            if cover_start is None:
-                cover_start, cover_end = b_start, interval_end
-            elif b_start <= cover_end:
-                cover_end = max(cover_end, interval_end)
-            else:
-                covered_tokens += count_distinctive(cover_start, cover_end)
-                cover_start, cover_end = b_start, interval_end
             span = (
                 b_start,
                 interval_end,
@@ -1008,8 +1290,6 @@ class MatcherRun:
                 char_start,
                 char_end,
             )
-            if first_span is None:
-                first_span = span
             if active_span is None:
                 active_span = span
                 return
@@ -1029,17 +1309,19 @@ class MatcherRun:
                 active_span = span
 
         def finish_group(group_doc: str, group_field: str) -> None:
-            nonlocal covered_tokens, cover_start, cover_end, anchor_ids
-            nonlocal distinctive_positions, active_span, best_span, first_span
-            nonlocal anchor_document_frequencies
+            nonlocal anchor_ids
+            nonlocal active_span, best_span
             if not anchor_ids:
                 return
-            if cover_start is not None and cover_end is not None:
-                covered_tokens += count_distinctive(cover_start, cover_end)
             flush_active()
-            distinctive_count = len(distinctive_positions)
-            coverage = covered_tokens / distinctive_count if distinctive_count else 0.0
-            anchor_count = len(anchor_ids)
+            (
+                aligned_tokens,
+                anchor_count,
+                coverage,
+                anchor_df_min,
+                anchor_df_max,
+                aligned_representative,
+            ) = self._best_coherent_alignment(group_doc, group_field)
             rule: str | None = None
             if (
                 best_span
@@ -1050,9 +1332,17 @@ class MatcherRun:
             elif (
                 coverage >= policy.distinctive_coverage
                 and anchor_count >= policy.minimum_rare_anchors
+                and aligned_representative is not None
             ):
                 rule = "distinctive_anchor_coverage"
-                selected_span = first_span
+                selected_span = (
+                    aligned_representative[0],
+                    aligned_representative[0] + policy.anchor_ngram_tokens,
+                    aligned_representative[1],
+                    aligned_representative[1] + policy.anchor_ngram_tokens,
+                    aligned_representative[2],
+                    aligned_representative[3],
+                )
             else:
                 selected_span = None
             if rule is not None and selected_span is not None:
@@ -1063,14 +1353,18 @@ class MatcherRun:
                         field_id=group_field,
                         decision_rule=rule,
                         exact=False,
-                        matched_tokens=covered_tokens,
+                        matched_tokens=(
+                            best_span[1] - best_span[0]
+                            if rule == "contiguous_token_run" and best_span
+                            else aligned_tokens
+                        ),
                         contiguous_tokens=(best_span[1] - best_span[0])
                         if best_span
                         else 0,
                         anchor_count=anchor_count,
                         coverage=coverage,
-                        anchor_df_min=min(anchor_document_frequencies.values()),
-                        anchor_df_max=max(anchor_document_frequencies.values()),
+                        anchor_df_min=anchor_df_min,
+                        anchor_df_max=anchor_df_max,
                         corpus_start=d_start,
                         corpus_end=d_end,
                         corpus_char_start=char_start,
@@ -1080,14 +1374,8 @@ class MatcherRun:
                     )
                 )
             anchor_ids = set()
-            anchor_document_frequencies = {}
-            distinctive_positions = set()
-            covered_tokens = 0
-            cover_start = None
-            cover_end = None
             active_span = None
             best_span = None
-            first_span = None
 
         evidence_cursor = self.connection.execute(
             """SELECT e.doc_id, e.field_id, e.anchor, e.benchmark_start,
@@ -1106,10 +1394,6 @@ class MatcherRun:
             ):
                 finish_group(current_doc, current_field or "")
             current_doc, current_field = doc_id, field_id
-            if not anchor_ids:
-                distinctive_positions = self.matcher._field_distinctive_positions.get(
-                    field_id, set()
-                )
             add_evidence(
                 (
                     row[2],
@@ -1201,6 +1485,26 @@ class MatcherRun:
     def scratch_bytes(self) -> int:
         self.connection.commit()
         return self.db_path.stat().st_size if self.db_path.exists() else 0
+
+    @property
+    def normalized_words_seen(self) -> int:
+        return self._normalized_words_seen
+
+    @property
+    def last_document_tokens(self) -> int:
+        return self._last_document_tokens
+
+    @property
+    def profile_timings(self) -> dict[str, float]:
+        return dict(self._profile_timings)
+
+    @property
+    def anchor_evidence_rows(self) -> int:
+        return int(
+            self.connection.execute("SELECT count(*) FROM anchor_evidence").fetchone()[
+                0
+            ]
+        )
 
     def anchor_frequencies(self) -> dict[str, int]:
         """Return exact distinct-document counts for query anchors seen so far."""
