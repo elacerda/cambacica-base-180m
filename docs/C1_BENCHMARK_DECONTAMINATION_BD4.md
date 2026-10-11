@@ -162,10 +162,18 @@ recorded in `artifact_manifest.sha256`.
 1. Scientist approval of the five possible-exposure cases, the 15 generic
    assessments, and the proposed zero-exclusion action; record any changed
    classification or separately approved exclusion.
-2. Complete BD5 verification and publish the residual-risk and C1 handoff
+2. Resolve the earlier BD2 evaluation decisions that BD4 did not address:
+   approve the snapshot provenance and rights caveats for intended local
+   evaluation, and decide whether the whitespace-only CALAME row 718 is
+   included in metric denominators (2,076 snapshot rows versus the proposed
+   2,075 evaluable rows). Pin the evaluation implementation before scoring.
+3. Finalize the C1 source mix among A/B/C and freeze any remaining language,
+   quality, and license policies. Recompute available documents, words, and
+   capacity after any separately approved exclusions.
+4. Complete BD5 verification and publish the residual-risk and C1 handoff
    record.
-3. Finish C1 approvals for the final corpus composition and reproducible
-   train/validation/test split, then produce and verify the immutable corpus
+5. Separately approve and create the reproducible train/validation/test split
+   after decontamination, then produce and verify the immutable corpus
    manifests and statistics that define the C2 tokenizer input.
 
 C1 remains **IN PROGRESS** and C2 remains **PENDING**. This report prepares

@@ -82,8 +82,10 @@ Progresso atual:
 Próximos critérios de C1:
 
 - cientista revisar e aprovar as classificações propostas no BD4, incluindo os cinco casos possíveis, e decidir explicitamente se haverá alguma exclusão;
+- resolver as decisões BD2 ainda pendentes: caveats de proveniência/direitos dos snapshots para avaliação local e denominador CALAME (2.076 linhas no snapshot ou 2.075 linhas avaliáveis); fixar a implementação de avaliação antes do scoring;
+- finalizar a composição A/B/C e quaisquer políticas pendentes de idioma, qualidade e licença; recalcular documentos, palavras e capacidade após exclusões separadamente aprovadas;
 - concluir a verificação BD5 e publicar o relatório de risco residual e o handoff de C1;
-- finalizar as aprovações da composição do corpus e do split train/validation/test reproduzível;
+- aprovar e criar o split train/validation/test reproduzível somente após a decontaminação;
 - produzir e verificar manifests e estatísticas imutáveis que definem a entrada do C2.
 
 Status: **IN PROGRESS**
