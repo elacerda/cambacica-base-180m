@@ -56,7 +56,7 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização e caracterização concluídas; D1 COMPLETE / PASS; D2–D2d COMPLETE; near dedup da primeira execução APPROVED / CLOSED com zero remoções; C1-BD1 APPROVED; C1-BD2 snapshot/calibration COMPLETE; C1-BD2.5 PREFLIGHT COMPLETE; C1-BD3 NOT RUN / NOT APPROVED; C1-BD4 NOT RUN.
+- normalização e caracterização concluídas; D1 COMPLETE / PASS; D2–D2d COMPLETE; near dedup da primeira execução APPROVED / CLOSED com zero remoções; C1-BD1 APPROVED; C1-BD2 snapshot/calibration COMPLETE; C1-BD2.5 PREFLIGHT COMPLETE; C1-BD2.6 RECOVERY COMPLETE; C1-BD3 scan COMPLETE e verificado independentemente; relatório de revisão C1-BD4 preparado, aguardando decisão científica.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -76,19 +76,15 @@ Progresso atual:
 - revisão científica e avaliação de política (D2d): **COMPLETE**, com packet em `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`;
 - decisão científica de near dedup para a primeira execução: **APPROVED / CLOSED**; preservar todos os registros pós-D1, com zero remoções por near dedup. A recomendação B de D2d permanece somente como direção futura. Veja [`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md);
 - produção de near dedup: **NOT RUN BY DESIGN**; não é um blocker para a decontaminação de benchmarks;
-- decontaminação de benchmarks: **BD1 APPROVED; BD2 COMPLETE; BD2.5 PREFLIGHT COMPLETE; BD2.6 RECOVERY COMPLETE / ENGINEERING READY; BD3 NOT RUN / NOT APPROVED; BD4 NOT RUN**; a aprovação científica da política e do scan BD3 continua pendente. Veja também o relatório [`C1_BENCHMARK_DECONTAMINATION_RECOVERY.md`](C1_BENCHMARK_DECONTAMINATION_RECOVERY.md), a aprovação em [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), os resultados BD2 em [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md), o preflight em [`C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md`](C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md) e o plano em [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
+- decontaminação de benchmarks: **BD1 APPROVED; BD2 COMPLETE; BD2.5 PREFLIGHT COMPLETE; BD2.6 RECOVERY COMPLETE; BD3 SCAN COMPLETE / VERIFIED; BD4 REVIEW PREPARED / SCIENTIST APPROVAL PENDING**. A análise propõe zero exclusões, mas sinaliza cinco ocorrências como possível exposição; nenhuma exclusão está autorizada e o corpus pós-D1 permanece intacto. Veja o relatório [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md), o relatório de recuperação [`C1_BENCHMARK_DECONTAMINATION_RECOVERY.md`](C1_BENCHMARK_DECONTAMINATION_RECOVERY.md), a aprovação BD3 [`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENTIFIC_APPROVAL.md), a aprovação inicial [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), os resultados BD2 [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md), o preflight [`C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md`](C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md) e o plano [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:
 
-- selecionar fontes finais e revisões pinned;
-- congelar políticas de idioma, qualidade e licença;
-- revisar as revisões, contagens, proveniência e caveats de direitos dos snapshots BD2;
-- aprovar thresholds finais e a política do scan antes de iniciar C1-BD3 manualmente;
-- revisar os candidatos de contaminação e decidir qualquer exclusão antes de C1-BD4;
-- comparar composições candidatas do corpus;
-- definir split train/validation/test reproduzível;
-- produzir manifests e estatísticas finais para a interface com C2.
+- cientista revisar e aprovar as classificações propostas no BD4, incluindo os cinco casos possíveis, e decidir explicitamente se haverá alguma exclusão;
+- concluir a verificação BD5 e publicar o relatório de risco residual e o handoff de C1;
+- finalizar as aprovações da composição do corpus e do split train/validation/test reproduzível;
+- produzir e verificar manifests e estatísticas imutáveis que definem a entrada do C2.
 
 Status: **IN PROGRESS**
 
