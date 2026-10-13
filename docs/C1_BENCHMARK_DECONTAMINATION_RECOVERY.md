@@ -1,6 +1,6 @@
 # C1-BD2.6 Production Recovery Readiness
 
-**Decision:** C1-BD2.6 recovery validation **COMPLETE**. **ENGINEERING READY / SCIENTIFIC APPROVAL PENDING** for one read-only BD3 run after the remaining scientific decisions and the Orion scratch preflight are complete. C1-BD3 was **NOT RUN / NOT APPROVED**.
+**Historical readiness status at this report's cutoff:** C1-BD2.6 recovery validation **COMPLETE** and engineering ready; BD3 scientific approval and production were still pending then. **Current disposition (2026-10-13):** BD3 was separately approved, completed, and independently verified; BD4 is scientist approved. See [`GATES.md`](GATES.md) and [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md).
 
 The work adds persistent restart state, exact resume checks, global document-frequency recovery, and restart-safe output publication. It does not freeze the matcher policy or authorize a production scan.
 
@@ -226,14 +226,14 @@ CALAME retains 2,076 snapshot rows; row 718 has a whitespace-only target and the
 
 The existing candidate policy hash `602f9d851cdc038b433ee252011cdddf48834f3ebd1ca1d625396baab7128267` is a concrete review target. It remains unfrozen and is not marked `SCIENTIST_APPROVED_FOR_BD3`.
 
-## 11. Gate status and recommendation
+## 11. Gate status and recommendation at the recovery-report cutoff
 
 - D1: **COMPLETE / PASS**; D2–D2d: **COMPLETE**.
 - Near-deduplication: **APPROVED / CLOSED**, zero removals.
 - C1-BD1: **APPROVED**; C1-BD2: **COMPLETE**; C1-BD2.5: **PREFLIGHT COMPLETE**.
 - C1-BD2.6: **COMPLETE** for the scoped recovery implementation and bounded validation.
 - Engineering: **READY** for one read-only scan once the Orion scratch preflight passes.
-- Scientific approval: **PENDING**; C1-BD3: **NOT RUN / NOT APPROVED**; C1-BD4: **NOT RUN**.
+- At this report's cutoff, scientific approval and BD3/BD4 were pending; the stages were subsequently authorized, completed, and verified as recorded in the current gates.
 - C1: **IN PROGRESS**; C2: **PENDING**.
 
-The production command remains dry-run by default and requires `--execute-bd3`, a scientist-approved policy, named approver, decision reference, and verified pinned inputs for both a fresh run and resume. No full-corpus scan, candidate generation, exclusion manifest, corpus change, mix change, split, model training, or policy freeze occurred.
+At this report's cutoff, the production command remained dry-run by default and no full-corpus scan, candidate generation, exclusion manifest, corpus change, mix change, split, model training, or policy freeze had occurred. BD3's later production and verification records are separate; the published BD3 manifest remains unchanged.

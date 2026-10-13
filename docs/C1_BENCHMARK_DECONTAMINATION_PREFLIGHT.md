@@ -1,8 +1,8 @@
 # C1-BD2.5 Independent Calibration and Production Performance Preflight
 
 **Date:** 2026-10-09
-**Status:** preflight evidence prepared; scientist review pending
-**Recommendation:** **OPTIMIZE** before a new production gate; C1-BD3 remains **NOT RUN / NOT APPROVED**
+**Historical status at preflight (2026-10-09):** evidence prepared; recommendation **OPTIMIZE** before production.
+**Current disposition (2026-10-13):** BD3 was separately authorized, completed, and independently verified; BD4 is scientist approved. See [`GATES.md`](GATES.md) and [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md).
 
 ## Scope and inputs
 
@@ -102,14 +102,14 @@ No checkpoint mechanism was implemented or tested in this preflight. Resumabilit
 
 ## Recommended gate and remaining decisions
 
-**C1-BD2.5: PREFLIGHT COMPLETE** for the supported deliverables, pending scientist review of the panel. **C1-BD3 recommendation: OPTIMIZE; NOT RUN / NOT APPROVED.** Before a new BD3 decision, implement and test restart-safe persistence, review the approximate alignment drift safeguard and calibration labels, confirm Orion throughput and scratch capacity, and document scientist approval of the final policy. Do not freeze the policy based on the synthetic controls.
+At the preflight cutoff, **C1-BD2.5 was COMPLETE** and the recommendation was to optimize restart-safe persistence, review alignment safeguards and calibration labels, confirm scratch capacity, and obtain written policy approval before a production decision. Those prerequisites were addressed in later decisions and the BD3 run recorded in [`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENTIFIC_APPROVAL.md) and [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md).
 
 Required gate statuses remain:
 
 - D1: **COMPLETE / PASS**; D2–D2d: **COMPLETE**.
 - Near-deduplication: **APPROVED / CLOSED**, zero removals.
 - C1-BD1: **APPROVED**; C1-BD2: **COMPLETE**; C1-BD2.5: **PREFLIGHT COMPLETE**.
-- C1-BD3: **NOT RUN / NOT APPROVED**; C1-BD4: **NOT RUN**.
+- C1-BD3 and C1-BD4 statuses in this preflight are historical; both stages are now complete under the current project gates.
 - C1: **IN PROGRESS**; C2: **PENDING**.
 
 No exclusions, train/validation/test splits, tokenizer training, model training, A/B/C mix changes, or full-corpus scan occurred.

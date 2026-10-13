@@ -56,7 +56,12 @@ Progresso atual:
     - 15,756,679 eligible/persisted records
     - 2,260 Parquet payload files
     - production manifest SHA-256: `358003af2241583ae353647f04601be1f00b096007476742a715e485b2a1ca14`
-- normalização e caracterização concluídas; D1 COMPLETE / PASS; D2–D2d COMPLETE; near dedup da primeira execução APPROVED / CLOSED com zero remoções; C1-BD1 APPROVED; C1-BD2 snapshot/calibration COMPLETE; C1-BD2.5 PREFLIGHT COMPLETE; C1-BD2.6 RECOVERY COMPLETE; C1-BD3 scan COMPLETE e verificado independentemente; relatório de revisão C1-BD4 preparado, aguardando decisão científica.
+- normalização e caracterização concluídas;
+- D1: **COMPLETE / PASS**; D2–D2d: **COMPLETE**;
+- near-deduplication da primeira execução: **APPROVED / CLOSED**, zero remoções;
+- C1-BD1: **APPROVED**; C1-BD2–BD2.6: **COMPLETE**;
+- C1-BD3: **COMPLETE / VERIFIED**; C1-BD4: **COMPLETE / SCIENTIST APPROVED**;
+- exclusões por contaminação de benchmarks: **ZERO**; workstream de decontaminação **CLOSED FOR FIRST TRAINING**.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -76,17 +81,15 @@ Progresso atual:
 - revisão científica e avaliação de política (D2d): **COMPLETE**, com packet em `/mnt/data/cambacica-base-180m/dedup-review/d2d-v1/`;
 - decisão científica de near dedup para a primeira execução: **APPROVED / CLOSED**; preservar todos os registros pós-D1, com zero remoções por near dedup. A recomendação B de D2d permanece somente como direção futura. Veja [`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md);
 - produção de near dedup: **NOT RUN BY DESIGN**; não é um blocker para a decontaminação de benchmarks;
-- decontaminação de benchmarks: **BD1 APPROVED; BD2 COMPLETE; BD2.5 PREFLIGHT COMPLETE; BD2.6 RECOVERY COMPLETE; BD3 SCAN COMPLETE / VERIFIED; BD4 REVIEW PREPARED / SCIENTIST APPROVAL PENDING**. A análise propõe zero exclusões, mas sinaliza cinco ocorrências como possível exposição; nenhuma exclusão está autorizada e o corpus pós-D1 permanece intacto. Veja o relatório [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md), o relatório de recuperação [`C1_BENCHMARK_DECONTAMINATION_RECOVERY.md`](C1_BENCHMARK_DECONTAMINATION_RECOVERY.md), a aprovação BD3 [`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENTIFIC_APPROVAL.md), a aprovação inicial [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), os resultados BD2 [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md), o preflight [`C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md`](C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md) e o plano [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
+- decontaminação de benchmarks: **BD1 APPROVED; BD2–BD2.6 COMPLETE; BD3 COMPLETE / VERIFIED; BD4 COMPLETE / SCIENTIST APPROVED**. Decisão para o primeiro treinamento: reter os 18 documentos afetados e excluir zero; corpus pós-D1 preservado. O workstream está **CLOSED FOR FIRST TRAINING**. Não é necessária outra experiência de decontaminação para essa decisão. Veja o registro BD4 [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md), a aprovação BD3 [`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENTIFIC_APPROVAL.md), a aprovação inicial [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), os resultados BD2 [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md), o preflight [`C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md`](C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md), a recuperação [`C1_BENCHMARK_DECONTAMINATION_RECOVERY.md`](C1_BENCHMARK_DECONTAMINATION_RECOVERY.md) e o plano [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
 - o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
 
 Próximos critérios de C1:
 
-- cientista revisar e aprovar as classificações propostas no BD4, incluindo os cinco casos possíveis, e decidir explicitamente se haverá alguma exclusão;
-- resolver as decisões BD2 ainda pendentes: caveats de proveniência/direitos dos snapshots para avaliação local e denominador CALAME (2.076 linhas no snapshot ou 2.075 linhas avaliáveis); fixar a implementação de avaliação antes do scoring;
-- finalizar a composição A/B/C e quaisquer políticas pendentes de idioma, qualidade e licença; recalcular documentos, palavras e capacidade após exclusões separadamente aprovadas;
-- concluir a verificação BD5 e publicar o relatório de risco residual e o handoff de C1;
-- aprovar e criar o split train/validation/test reproduzível somente após a decontaminação;
-- produzir e verificar manifests e estatísticas imutáveis que definem a entrada do C2.
+- resolver os caveats de proveniência e direitos dos snapshots para avaliação local, decidir o denominador CALAME (2.076 linhas ou 2.075 linhas avaliáveis) e fixar a implementação de avaliação;
+- selecionar a composição A/B/C e concluir as políticas finais de fonte, idioma, qualidade e licença;
+- aprovar e criar o split train/validation/test reproduzível após a seleção dos dados;
+- produzir e verificar os manifests e as estatísticas imutáveis que definem a entrada do C2.
 
 Status: **IN PROGRESS**
 

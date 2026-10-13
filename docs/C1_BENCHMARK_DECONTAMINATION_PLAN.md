@@ -1,14 +1,15 @@
 # Gate C1 Benchmark-Decontamination Plan
 
-**Status:** planning proposal; production scan and benchmark evaluation are **NOT RUN**
-**Next:** scientist approval of the benchmark inventory, provisional match rules, and review/exclusion policy
+**Status at drafting:** planning proposal; production scan and benchmark evaluation had not yet run.
+**Current disposition (2026-10-13):** BD3 was authorized, completed, and independently verified; BD4 is scientist approved. Benchmark scoring remains unstarted. See [`GATES.md`](GATES.md) and [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md).
+**Next C1 work:** finalize composition and source policies, resolve evaluation decisions, create the approved reproducible split, and publish immutable training manifests.
 **Corpus input:** post-D1 exact corpus, immutable and identified by manifest SHA-256 `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`
 
 ## 1. Objective and scope
 
 Reduce the risk that a first-run Cambacica Base 180M evaluation measures recall of public benchmark material already present in pretraining. This is a narrow overlap check against selected evaluation sets. It is not general corpus deduplication and does not estimate or eliminate semantic memorization.
 
-The source corpus stays immutable. D1 exact deduplication is complete; near-deduplication removals are closed at zero for the first run by [C1_NEAR_DEDUP_FINAL_DECISION.md](C1_NEAR_DEDUP_FINAL_DECISION.md). Do not change the A/B/C mix specifications, normalization contract, or source documents. Decontamination is the next C1 stage; it has not run.
+The source corpus stays immutable. D1 exact deduplication is complete; near-deduplication removals are closed at zero for the first run by [C1_NEAR_DEDUP_FINAL_DECISION.md](C1_NEAR_DEDUP_FINAL_DECISION.md). Do not change the A/B/C mix specifications, normalization contract, or source documents. At the time this plan was drafted, benchmark decontamination had not run; BD3 and BD4 have since completed under the current gates.
 
 The first-run evaluation proposal is deliberately small:
 
@@ -192,7 +193,7 @@ Scientists must approve before implementation:
 5. The proposed exact-content-group split contract and the corresponding disclosure of residual near-copy risk.
 6. The evaluation framework and immutable software version. [lm-evaluation-harness documents causal-LM log-likelihood and rolling-likelihood interfaces](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md) and is used by Tucano; custom pinned task configs may be needed for the core. [Lighteval documents a multiple-choice ENEM likelihood task](https://github.com/huggingface/lighteval/blob/main/src/lighteval/tasks/multilingual/tasks/enem.py). Select and pin one implementation before scoring; no evaluator dependency is added in this planning task.
 
-## 10. Implementation phases and success criteria
+## 10. Implementation phases and success criteria in the original plan
 
 1. **C1-BD1 — Scientist approval.** Approve core datasets, versions, terms, candidate policy, record-level review action, and proposed split contract. Success: signed decision entry with no unresolved dataset rights/config required for the core.
 2. **C1-BD2 — Snapshot and matcher specification.** Fetch only approved Portuguese config/splits, compute file/example hashes, freeze field mappings and match rules. Test on synthetic positives/negatives and a small scientist-approved calibration sample. Success: reproducible snapshot; reviewed candidate behavior; documented limits; no source-corpus mutation.
@@ -200,4 +201,4 @@ Scientists must approve before implementation:
 4. **C1-BD4 — Human review and training view.** Review candidate hits, approve or reject explicit record exclusions, calculate source/subset/A/B/C impact, and write immutable decision manifests. Success: every exclusion has direct evidence and approval; the input corpus and mix files remain unchanged.
 5. **C1-BD5 — Verification and C1 handoff.** Re-run deterministic verification, publish residual-risk report, then separately approve deterministic corpus splitting and final mix materialization. Success: reproducible report and eligible post-decontamination corpus interface. This plan does not mark C1 PASS.
 
-Until those approvals and stages are complete, benchmark decontamination remains **NEXT / NOT RUN**, C1 remains **IN PROGRESS**, and C2 remains **PENDING**.
+At the time this plan was drafted, the listed approvals and stages were still pending. Current status: benchmark decontamination is closed for first training with zero exclusions; C1 remains **IN PROGRESS**, and C2 remains **PENDING**.

@@ -3,7 +3,7 @@
 - **Decision:** C1-BD1 scientific scope **APPROVED**
 - **Record date:** 2026-10-09
 - **Approval basis:** Scientist-approved direction supplied for Gate C1-BD2. No individual signatory or separate meeting record was supplied.
-**Production authorization:** C1-BD3 **NOT APPROVED / NOT RUN**
+**Production authorization at the BD1 decision:** C1-BD3 was **NOT APPROVED / NOT RUN** by this record. It was approved separately in [`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENT_APPROVAL.md), then completed and independently verified; BD4 was scientist approved on 2026-10-13. Current status is in [`GATES.md`](GATES.md).
 
 This record approves the benchmark direction and operational constraints. It
 does not assert that dataset licenses settle every right in upstream source

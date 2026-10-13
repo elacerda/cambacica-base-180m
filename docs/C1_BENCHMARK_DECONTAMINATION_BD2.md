@@ -1,7 +1,8 @@
 # C1-BD2 Benchmark Snapshot and Matcher Calibration
 
-**Status:** snapshot **COMPLETE**; calibration **COMPLETE**; C1-BD3 production
-scan **NOT RUN**; C1-BD4 review/exclusions **NOT RUN**
+**Status at the BD2 milestone:** snapshot **COMPLETE**; calibration **COMPLETE**.
+BD3 and BD4 had not yet occurred at that milestone; their current disposition
+is recorded in [`GATES.md`](GATES.md).
 **BD1:** scientist-approved scope, recorded in
 [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md)
 **Corpus input identity:** `/mnt/data/cambacica-base-180m/deduplicated/exact`,
