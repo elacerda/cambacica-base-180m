@@ -62,6 +62,10 @@ Progresso atual:
 - C1-BD1: **APPROVED**; C1-BD2–BD2.6: **COMPLETE**;
 - C1-BD3: **COMPLETE / VERIFIED**; C1-BD4: **COMPLETE / SCIENTIST APPROVED**;
 - exclusões por contaminação de benchmarks: **ZERO**; workstream de decontaminação **CLOSED FOR FIRST TRAINING**.
+- C1-S1: **BOUNDED VALIDATION PASS / SPLIT POLICY PROPOSED**; contrato determinístico e readiness A/B/C em [`C1_SPLIT_AND_MIXTURE_READINESS.md`](C1_SPLIT_AND_MIXTURE_READINESS.md). Amostra de 2.991 registros, 21 estratos fonte/subset, zero overlap de IDs entre splits, reconstrução independente com ordem e batches diferentes;
+- proposta de split: 98%/1%/1% por grupos dentro de fonte/subset, com cobertura mínima para estratos pequenos; execução completa **NOT RUN**, aguardando aprovação científica;
+- CALAME: convenção já aprovada de **2.076 linhas de snapshot / 2.075 avaliáveis**, excluindo somente o alvo whitespace da linha 718 do denominador futuro; implementação C7 permanece futura;
+- A/B/C continuam hipóteses: A curated-heavy, B balanced (referência provisória de preparação), C residual-heavy control. O vencedor será escolhido depois de experimentos comparáveis com tokenizer C2 e arquitetura C3 fixos.
 
 ### Normalização, caracterização e deduplicação exata do C1
 
@@ -86,10 +90,11 @@ Progresso atual:
 
 Próximos critérios de C1:
 
-- resolver os caveats de proveniência e direitos dos snapshots para avaliação local, decidir o denominador CALAME (2.076 linhas ou 2.075 linhas avaliáveis) e fixar a implementação de avaliação;
-- selecionar a composição A/B/C e concluir as políticas finais de fonte, idioma, qualidade e licença;
-- aprovar e criar o split train/validation/test reproduzível após a seleção dos dados;
-- produzir e verificar os manifests e as estatísticas imutáveis que definem a entrada do C2.
+- confirmar a base de uso científico local quando a autorização existente não cobrir os caveats de direitos; separar revisão de direitos para publicação/redistribuição. Não há novo estudo de decontaminação pendente;
+- aprovar o contrato C1-S1 de split/grupos/estratos raros e suas limitações, executar somente então o pass completo de referências e verificar manifests/estatísticas;
+- aprovar a política e fixar as identidades da amostra de tokenizer derivada apenas do treino (B como referência provisória); palavras normalizadas não são tokens;
+- registrar políticas aplicáveis de fonte/idioma/qualidade/licença e capacidades reais pós-holdout, tolerâncias de cotas e qualquer reutilização explícita. A seleção do vencedor A/B/C fica para os experimentos posteriores;
+- fixar a implementação futura de avaliação no C7, usando a convenção CALAME já aprovada; isso não autoriza implementação C7 neste estágio.
 
 Status: **IN PROGRESS**
 

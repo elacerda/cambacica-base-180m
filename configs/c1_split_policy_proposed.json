@@ -1,0 +1,17 @@
+{
+  "version": "c1-s1-v1",
+  "status": "proposed_requires_scientist_approval",
+  "input_manifest_sha256": "57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428",
+  "seed": 20261013,
+  "ratios_basis_points": {"train": 9800, "validation": 100, "test": 100},
+  "stratum": ["source", "subset"],
+  "group_rules": {
+    "carolina": "original_id",
+    "wikipedia_pt": "original_id",
+    "gutenberg_pt": "original_id",
+    "gigaverbo_v2": "original_id",
+    "parlamento_pt": "content_sha256"
+  },
+  "long_document_words": 100000,
+  "tiny_strata": "one_group_train;two_groups_train_validation;three_or_more_minimum_one_per_split"
+}
