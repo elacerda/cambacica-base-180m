@@ -1,8 +1,13 @@
-# C2 — Tokenizer experimental framework
+# C2 — Tokenizer experiments
 
-**Implementation status: validated; C2 is in progress. No production tokenizer
-has been trained, no full validation text set has been materialized, and no
-candidate has been compared on the production evaluation sample.**
+**Current status: COMPLETE / SCIENTIST APPROVED / VERIFIED.** SentencePiece
+Unigram 24,576 (`unigram-v24576`) is frozen for the first Cambacica-180M
+training run. The immutable decision record, six-candidate comparison, and
+artifact identities are in [`C2_TOKENIZER_SELECTION_V1.md`](C2_TOKENIZER_SELECTION_V1.md).
+
+The rest of this document records the original C2 experiment contract and
+reproduction commands. The six-candidate matrix and production configuration
+remain unchanged.
 
 ## Hypotheses and candidate matrix
 
@@ -238,19 +243,36 @@ cambacica-tokenizer compare --evaluation-root "$C2_EVALUATIONS" --output-dir "$C
 
 The compare command requires all six pinned candidate artifacts and writes
 `summary.csv`, `by_source.csv`, `by_source_subset_domain.csv`, a comparison
-manifest, and checksums. It reports no winner.
+manifest, and checksums. It does not declare a winner; the scientist's separate
+selection is recorded in [`C2_TOKENIZER_SELECTION_V1.md`](C2_TOKENIZER_SELECTION_V1.md).
 
-## Validation and open decisions
+## Results and limits
 
-Validation is limited to configuration/CLI checks, unit tests, tiny synthetic
-BPE and Unigram training, a small bounded read of published real artifacts,
-and Ruff. The production sample has not been used for tokenizer training, the
-full validation text sample has not been created, and no six-candidate result
-table has been produced.
+The production comparison used the fixed 616-document C1-S1 validation sample
+in 21 strata. All six candidates round-tripped 616/616 documents, had 0%
+unknown-token rate, and produced exactly 965,238 byte-fallback tokens. The
+selected Unigram 24,576 achieved 1.732 global tokens/word, 1.658 equal-source
+macro tokens/word, a 1.615 equal-stratum descriptive mean, 40.59% single-piece
+representation of accented Portuguese words, 2.810 mean pieces for rare
+sample words, and 1.569 mean pieces for observed technical terms. At reference
+width 768, its input embedding matrix has 18,874,368 parameters.
 
-C1 remains **IN PROGRESS** because rights and policy matters are unresolved.
-The C1-S2 B mixture remains a preparation reference, not the final training
-mixture. Before interpreting results, the scientist should review the fixed
-technical probe list, the equal-source macro interpretation, the EOD contract
-against C3's packing design, and the 768-wide tied/untied budget cases. C2
-reports measurements without choosing a tokenizer.
+BPE 24k yields slightly fewer tokens per word, with more fragmentation of
+accented words and technical terms. Unigram 32k improves fragmentation further
+but adds 6,291,456 parameters per 768-wide embedding matrix. These measurements
+do not prove downstream language-model superiority. Tokenization throughput is
+host-specific and does not predict model generation speed.
+
+Targeted probes found LF, CR, and TAB encoded by byte-fallback pieces, while
+ordinary accented Portuguese text encoded correctly. LF counts matched
+fallback counts in selected real documents. The finding is strongly consistent
+with preservation of structural characters, especially newlines, but the
+experiment did not independently classify every fallback in the full
+validation sample. C4 must account for this when measuring packed context
+occupancy. It does not change normalization, input text, newline preservation,
+or the one-EOS-per-document policy.
+
+C1 remains **IN PROGRESS** while source-rights and usage-policy issues are
+unresolved. Mixtures A/B/C remain undecided; B was the provisional tokenizer
+sampling reference, not the approved final training mixture. C3 remains
+planning-only; see [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md).

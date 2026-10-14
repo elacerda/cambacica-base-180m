@@ -28,20 +28,22 @@ tratado como um projeto completo em sua própria escala, com ênfase em:
 
 ## Estado
 
-Projeto iniciado. A arquitetura exata, o tokenizer, a composição do corpus e a
-receita de treinamento ainda **não estão congelados**.
+O tokenizer para o primeiro treinamento está congelado: SentencePiece Unigram
+24.576, candidato `unigram-v24576`. A decisão foi aprovada pelo cientista e os
+artefatos de produção e comparação foram verificados. Consulte o [registro de
+seleção C2](docs/C2_TOKENIZER_SELECTION_V1.md).
 
-A primeira etapa é caracterizar e validar essas decisões experimentalmente.
+C1 permanece **IN PROGRESS** enquanto direitos e políticas de uso estiverem
+pendentes. O split determinístico C1-S1 está COMPLETE / VERIFIED; C1-S2 está
+COMPLETE / VERIFIED. A mistura final A/B/C continua undecidida. A mistura B foi
+somente a referência provisória para amostragem do tokenizer. Consulte os
+[gates do projeto](docs/GATES.md) e o [estado e identidades do split
+C1-S1](docs/C1_SPLIT_AND_MIXTURE_READINESS.md).
 
-**Status C1:** D1 está COMPLETE / PASS; a decisão científica foi aprovada para
-preservar todos os registros pós-D1, com zero remoções por near dedup na
-primeira execução. D2–D2d estão concluídos. A decontaminação de benchmarks é a
-etapa em andamento: BD3 foi concluído e verificado; o relatório de revisão BD4
-está preparado para decisão científica, com cinco casos possíveis de exposição
-pendentes e zero exclusões propostas. Nenhum documento foi alterado. C1 segue
-**IN PROGRESS** e C2 está **PENDING**. Consulte [a decisão final de near
-dedup](docs/C1_NEAR_DEDUP_FINAL_DECISION.md), [o relatório BD4](docs/C1_BENCHMARK_DECONTAMINATION_BD4.md)
-e [o plano de decontaminação](docs/C1_BENCHMARK_DECONTAMINATION_PLAN.md).
+C3 está em planejamento. A arquitetura, o context length, o optimizer, o
+orçamento final de tokens e a receita de treinamento continuam sem decisão.
+As propostas para revisão científica estão em
+[`docs/C3_ARCHITECTURE_PLANNING.md`](docs/C3_ARCHITECTURE_PLANNING.md).
 
 ## Princípios
 

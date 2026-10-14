@@ -1,8 +1,28 @@
 # C1-S1 — Split and candidate mixture readiness
 
-2026-10-13. Starting HEAD: `9fb41455a3026930e1fd7e2a7541792084471f28`;
-worktree clean. **Bounded validation PASS; split policy PROPOSED, awaiting
-scientist approval. C1 IN PROGRESS; C2 PENDING.**
+**Current status update — 2026-10-14: C1-S1 COMPLETE / VERIFIED.** The full
+deterministic split was approved, executed, and independently verified. Its
+published identities are:
+
+- Policy SHA-256: `11ffdfd9521c472106cec8b7d8882770329ea2d8bf3080a817d90634dbd37444`.
+- Input D1 manifest SHA-256: `57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428`.
+- Split manifest SHA-256: `8b937f90d40487c643fe48baa6b5c2950713fe2e0d2d534f3e2a3c08e74dbe16`.
+- Assignment Parquet SHA-256: `ef52e3cf3033934df13e3d16c207e1783c509dff6fb91954fb8c25ab719ece1e`.
+- Published `checksums.sha256` file SHA-256: `b5143676f5968d7fe4927ae0b217693bfe75396950b13c5b40321af8c429eabf`.
+- Full assignment count: 21,603,689 documents; published verifier result:
+  `PASS` for 21,603,689 documents, with the same assignment SHA-256.
+- Verification log SHA-256: `7a6e8db4128b4efb7e9cf9e497db67653f422ac3c58d63088bebb07aa4c68d87`.
+
+The artifacts are published at
+`/mnt/data/cambacica-base-180m/splits/c1-s1-v1/`. These are the exact split
+identities consumed by C2. This update supersedes the prospective status and
+next-step wording below, which records the 2026-10-13 planning baseline. C1
+remains **IN PROGRESS** while source-rights and usage-policy issues are
+unresolved; C2 is now **COMPLETE / SCIENTIST APPROVED / VERIFIED**.
+
+Historical planning baseline (2026-10-13): starting HEAD
+`9fb41455a3026930e1fd7e2a7541792084471f28`; bounded validation had passed and
+the full split was awaiting scientific approval at that time.
 
 The eligible input is the immutable post-D1 corpus at
 `/mnt/data/cambacica-base-180m/deduplicated/exact`: 21,603,689 records,
@@ -66,12 +86,14 @@ assessment; scientific approval alone does not resolve those rights. CALAME's
 MIT and Belebele's CC BY-SA 4.0 declarations likewise do not clear all embedded
 third-party content ([BD4 caveats](C1_BENCHMARK_DECONTAMINATION_BD4.md)).
 
-## Proposed deterministic split contract
+## Deterministic split contract used for C1-S1
 
 Policy: [`c1_split_policy_proposed.json`](../configs/c1_split_policy_proposed.json),
 version `c1-s1-v1`, seed **20261013**; file SHA-256
 `11ffdfd9521c472106cec8b7d8882770329ea2d8bf3080a817d90634dbd37444`.
-The scientist must approve these exact policy bytes before a full manifest pass.
+These exact policy bytes were approved and used for the completed split recorded
+at the top of this document. The proposal wording below is retained as the
+original policy rationale.
 
 Propose **98% train / 1% validation / 1% test by unique group within each
 source/subset**, not by documents or words. At this scale, 1% per held-out split
@@ -125,7 +147,12 @@ out by these source-scoped groups. The common holdouts measure this retained
 distribution, not an independently clean novel-work test. These limitations are
 accepted for review without reopening D2 or decontamination.
 
-## Candidate capacities and reference views
+## Candidate capacity projections and reference views
+
+The post-holdout figures in this section were planning estimates before the
+full assignment. The published C1-S1 manifest now provides the authoritative
+training/validation/test accounting; the projections below are preserved as
+historical planning context.
 
 A remains **curated-heavy**, B **balanced**, C **residual-heavy experimental
 control**. All configs validate, sum to one at both levels, pin the same sources
@@ -196,16 +223,15 @@ Fine semantic domains and national variety cannot be inferred from absent labels
 Any later bounded window selection for expensive evaluation must be shared,
 seeded and parent-ID preserving. No C7 evaluator is implemented here.
 
-Recommend one **training-only B-reference tokenizer sample** with independent
-seed, whole-document references, checksums and achieved word proportions,
-shared across every C2 tokenizer trial. Provisionally explore a 20-million-word
-target only after sample policy approval; long-record quota shortfalls may be
-large and must be reported. Pin the eventual sample size/granularity handling
-before sampling. Choose/freeze one C2 tokenizer before A/B/C model comparisons.
-This conditions the comparison on a balanced-reference tokenizer, potentially
-favoring B; record that assumption, rather than asserting a mixture-neutral
-tokenizer or training three candidate-specific tokenizers. Token counts and
-equal training exposure budgets must be measured with that fixed tokenizer.
+The recommended **training-only B-reference tokenizer sample** was materialized
+and independently verified as C1-S2 v1, with its exact identity in
+[`C1_TOKENIZER_SAMPLE.md`](C1_TOKENIZER_SAMPLE.md). The six C2 candidates shared
+that sample. The scientist has since frozen `unigram-v24576` in
+[`C2_TOKENIZER_SELECTION_V1.md`](C2_TOKENIZER_SELECTION_V1.md). This conditions
+future A/B/C comparisons on a balanced-reference tokenizer, potentially
+favoring B; it does not establish a mixture-neutral tokenizer or approve B as
+the final training mixture. Token counts and equal training exposure budgets
+must use the frozen tokenizer.
 
 ## Bounded results and handoff
 
@@ -249,17 +275,17 @@ PYTHONPATH=src python3 scripts/validate_c1_split_readiness.py \
   --output-root /tmp/cambacica-base-180m/c1-s1/bounded-reproduction
 ```
 
-Remaining local scientific decisions are approval of this split/group/rare-stratum
-policy and its leakage limitations; tokenizer sample policy; comparable budgets,
-quota tolerance and any explicit reuse schedule; and confirmation of the local
-usage basis described above. Public release rights remain separate. C1 cannot
-PASS until approved full split references/statistics and C2 input sample identities
-exist and applicable source policies are recorded. **No final A/B/C winner is
+Remaining local scientific decisions include confirmation of the local usage
+basis described above, remaining applicable source policies, comparable
+training budgets, quota tolerance and any explicit reuse schedule. Public
+release rights remain separate. The full split and C2 input sample identities
+now exist and are verified; C1 remains in progress until its unresolved
+source-rights and usage-policy matters are resolved. **No final A/B/C winner is
 required at this stage.**
 
-## Exact next production step — only after scientific authorization
+## Historical production plan — completed 2026-10-13
 
-Create a scientist-issued JSON at
+The contemporaneous plan required a scientist-issued JSON at
 `/mnt/data/cambacica-base-180m/splits/c1-s1-v1-approval.json`, with
 `scientist`, `decision_reference`, and these exact fields:
 
@@ -271,9 +297,9 @@ Create a scientist-issued JSON at
 }
 ```
 
-No such approval was created in S1. From this committed checkout, the next
-authorized production action is a read-only D1 pass producing **one reference
-manifest**, followed by independent reconstruction:
+That approval was subsequently created and used. The full read-only D1 pass
+produced one reference manifest, followed by independent reconstruction and
+verification:
 
 ```bash
 PYTHONPATH=src python3 -m cambacica.corpus.split build --full \
@@ -288,7 +314,7 @@ PYTHONPATH=src python3 -m cambacica.corpus.split verify --full \
   --output-root /mnt/data/cambacica-base-180m/splits/c1-s1-v1
 ```
 
-Each build verifies every input payload SHA-256 before reading it, then hashes
+The commands below preserve the planned invocation. Each build verifies every input payload SHA-256 before reading it, then hashes
 each record's stored text and counts words; the verifier rebuilds independently
 in a temporary sibling directory. Thus the pair reads approximately **186 GB
 of compressed input** (two checksum plus two parsing passes over 46,567,510,543
@@ -299,9 +325,9 @@ temporary SQLite tables/indexes and outputs. NFS random writes may exceed this
 estimate; bounded timings in `readiness.json` are diagnostic-heavy and cannot
 be extrapolated by document count. No GPU, downloads or external compute cost.
 
-Require verifier PASS, byte-identical manifest/Parquet, 21,603,689 unique IDs,
+The published verifier recorded PASS, byte-identical manifest/Parquet, 21,603,689 unique IDs,
 21,470,091,017 words, exact source/subset totals against D1, expected tiny-stratum
 quotas, group integrity and all five families represented in each heldout.
-Recheck D1/BD3/BD4 identities, retain verification output, then recompute
-training-only capacities from manifest accounting and approve sampling targets.
-Stop there; tokenizer training and A/B/C corpus materialization are later actions.
+The resulting identities are preserved above. C1-S2 sampling and C2 tokenizer
+selection subsequently completed; A/B/C corpus materialization and final
+mixture approval remain future work.

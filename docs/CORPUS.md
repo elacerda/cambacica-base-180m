@@ -6,6 +6,16 @@ Gate: **C1 — corpus**
 
 Status: **IN PROGRESS**
 
+**Status update — 2026-10-14:** the full deterministic C1-S1 split is
+**COMPLETE / VERIFIED** for 21,603,689 documents. Its manifest SHA-256 is
+`8b937f90d40487c643fe48baa6b5c2950713fe2e0d2d534f3e2a3c08e74dbe16` and its
+assignments SHA-256 is
+`ef52e3cf3033934df13e3d16c207e1783c509dff6fb91954fb8c25ab719ece1e`. C2 is
+**COMPLETE / SCIENTIST APPROVED / VERIFIED** with Unigram 24,576. C1 remains
+in progress while source-rights and usage-policy issues remain unresolved. The
+status and prospective wording below are superseded where they say the split
+or C2 is still pending.
+
 Este documento registra a política científica inicial para o corpus de
 pretraining do `cambacica-base-180m`.
 
@@ -343,10 +353,11 @@ de benchmarks segue como etapa separada.
 
 Os splits devem ser determinísticos e não podem separar registros com o mesmo
 conteúdo normalizado exato. Como near copies permanecem no corpus e o censo D2c
-tem limites de cobertura, a regra proposta para a primeira execução agrupa
-conteúdos exatos e documenta o risco residual de near copies. Essa regra precisa
-ser aprovada antes de criar os splits; ela não reabre a decisão de zero
-remoções por near dedup.
+tem limites de cobertura, o contrato C1-S1 para a primeira execução agrupa
+conteúdos exatos e documenta o risco residual de near copies. Esse contrato foi
+aprovado, executado e verificado; identidades e limitações estão em
+[`C1_SPLIT_AND_MIXTURE_READINESS.md`](C1_SPLIT_AND_MIXTURE_READINESS.md). Ele
+não reabre a decisão de zero remoções por near dedup.
 
 A normalização bruta do Gate C1 está congelada em
 [`C1_NORMALIZATION_SPEC.md`](C1_NORMALIZATION_SPEC.md), versão 1.0.0. Ela mantém
@@ -416,29 +427,23 @@ parte do contrato da primeira execução.
 Benchmarks usados para avaliar o Cambacica devem ser registrados antes do
 congelamento final do corpus.
 
-O corpus deve ser analisado contra seus conjuntos de validação e teste antes da
-criação dos splits finais.
-
-O método de matching está planejado em
-[C1_BENCHMARK_DECONTAMINATION_PLAN.md](C1_BENCHMARK_DECONTAMINATION_PLAN.md)
-e requer aprovação científica antes da execução. Deve ser suficientemente
-reproduzível para responder quais documentos foram marcados ou excluídos e por
-quê.
-
-A caracterização de overlap, por si só, não será considerada equivalente a uma
-etapa de decontaminação.
+O corpus foi analisado contra os snapshots de validação e teste antes da
+criação dos splits finais. O trabalho BD1–BD4 foi concluído e aprovado para a
+primeira execução, com zero exclusões; consulte
+[`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md).
+Essa aprovação documenta a evidência disponível, não prova ausência de toda
+forma possível de exposição.
 
 ## 14. Split de treino, validação e teste
 
-O split final deve ocorrer **depois da deduplicação exata e da decontaminação**.
-Na primeira execução, near copies serão preservadas. O contrato proposto agrupa
-conteúdos exatos sob o mesmo split e relata que não há garantia corpus-wide de
-que near copies não cruzem splits. A proposta aguarda aprovação científica.
-
-Os splits deverão ser determinísticos e reproduzíveis a partir do manifesto.
-
-A política exata de proporções será definida depois que conhecermos o número e o
-tamanho real dos documentos candidatos.
+O split final ocorreu **depois da deduplicação exata e da decontaminação**. Na
+primeira execução, near copies foram preservadas. O contrato C1-S1 agrupa
+conteúdos exatos sob o mesmo split e registra que não há garantia corpus-wide
+de que near copies não cruzem splits. A política aprovada atribui grupos por
+fonte/subset em proporção nominal 98%/1%/1%, com regras de cobertura para
+estratos pequenos. O split completo e sua verificação independente estão
+publicados em `/mnt/data/cambacica-base-180m/splits/c1-s1-v1/`; veja os hashes
+acima e o relatório vinculado.
 
 ## 15. Metadados e manifesto
 
@@ -526,7 +531,10 @@ C1 poderá ser fechado quando:
 - a estratégia A ou B, ou uma variante delas, tiver sido escolhida com base nas
   medições.
 
-Até lá, C1 permanece **IN PROGRESS** e C2 permanece **PENDING**.
+O split C1-S1 e a seleção C2 satisfazem os respectivos critérios. C1 permanece
+**IN PROGRESS** enquanto direitos e políticas de uso não estiverem resolvidos;
+C2 está **COMPLETE / SCIENTIST APPROVED / VERIFIED**. A mistura A/B/C final
+continua sem decisão.
 
 ## 19. Questões abertas
 
@@ -546,10 +554,12 @@ Até lá, C1 permanece **IN PROGRESS** e C2 permanece **PENDING**.
 8. Quantos tokens efetivamente vistos durante o treino são úteis antes que a
    curva de ganho deixe de justificar tempo adicional na Orion?
 
-## 20. Próxima ação
+## 20. Próximas decisões
 
-A próxima etapa do C1 é construir um **inventário mensurável das fontes
-candidatas** e obter amostras pequenas e reproduzíveis.
-
-Essas amostras serão usadas para substituir estimativas secundárias por medidas
-reais antes de escolher a composição final do corpus.
+O inventário e as amostras C1 já foram construídos. As decisões abertas de C1
+são resolver a base de uso científico local e as políticas aplicáveis às
+fontes, e escolher a mistura final A/B/C com capacidades pós-holdout e
+orçamento de exposição explícitos. O Gate C2 já congelou o tokenizer; consulte
+[`GATES.md`](GATES.md) para o estado atual e
+[`C1_SPLIT_AND_MIXTURE_READINESS.md`](C1_SPLIT_AND_MIXTURE_READINESS.md) para
+as identidades e limitações do split.

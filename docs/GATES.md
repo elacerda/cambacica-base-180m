@@ -62,8 +62,7 @@ Progresso atual:
 - C1-BD1: **APPROVED**; C1-BD2–BD2.6: **COMPLETE**;
 - C1-BD3: **COMPLETE / VERIFIED**; C1-BD4: **COMPLETE / SCIENTIST APPROVED**;
 - exclusões por contaminação de benchmarks: **ZERO**; workstream de decontaminação **CLOSED FOR FIRST TRAINING**.
-- C1-S1: **BOUNDED VALIDATION PASS / SPLIT POLICY PROPOSED**; contrato determinístico e readiness A/B/C em [`C1_SPLIT_AND_MIXTURE_READINESS.md`](C1_SPLIT_AND_MIXTURE_READINESS.md). Amostra de 2.991 registros, 21 estratos fonte/subset, zero overlap de IDs entre splits, reconstrução independente com ordem e batches diferentes;
-- proposta de split: 98%/1%/1% por grupos dentro de fonte/subset, com cobertura mínima para estratos pequenos; execução completa **NOT RUN**, aguardando aprovação científica;
+- C1-S1: **COMPLETE / VERIFIED**; o split determinístico completo foi aprovado, executado e verificado independentemente para 21.603.689 documentos. Manifest SHA-256 `8b937f90d40487c643fe48baa6b5c2950713fe2e0d2d534f3e2a3c08e74dbe16`; assignments SHA-256 `ef52e3cf3033934df13e3d16c207e1783c509dff6fb91954fb8c25ab719ece1e`. Evidências e identidades publicadas em [`C1_SPLIT_AND_MIXTURE_READINESS.md`](C1_SPLIT_AND_MIXTURE_READINESS.md);
 - C1-S2: **COMPLETE / VERIFIED**; seleção **PASS**, materialização **MATERIALIZED** e verificação independente **PASS**. A versão v1 tem 46.583 documentos e 19.999.380 palavras normalizadas (shortfall de 620); todas as tolerâncias de cotas por fonte e subset passaram. Identidades, checksums e ressalvas científicas estão em [`C1_TOKENIZER_SAMPLE.md`](C1_TOKENIZER_SAMPLE.md). O sample preserva a referência provisória B e não escolhe a mistura final A/B/C;
 - CALAME: convenção já aprovada de **2.076 linhas de snapshot / 2.075 avaliáveis**, excluindo somente o alvo whitespace da linha 718 do denominador futuro; implementação C7 permanece futura;
 - A/B/C continuam hipóteses: A curated-heavy, B balanced (referência provisória de preparação), C residual-heavy control. O vencedor será escolhido depois de experimentos comparáveis com tokenizer C2 e arquitetura C3 fixos.
@@ -94,10 +93,8 @@ Progresso atual:
 Próximos critérios de C1:
 
 - confirmar a base de uso científico local quando a autorização existente não cobrir os caveats de direitos; separar revisão de direitos para publicação/redistribuição. Não há novo estudo de decontaminação pendente;
-- aprovar o contrato C1-S1 de split/grupos/estratos raros e suas limitações, executar somente então o pass completo de referências e verificar manifests/estatísticas;
-- manter C1-S2 v1 como a identidade congelada para C2; qualquer amostra com taxonomia ou quotas alteradas exige nova versão e aprovação científica. Palavras normalizadas não são tokens, e C1-S2 não seleciona a mistura final A/B/C;
+- manter os contratos e identidades publicados de C1-S1 e C1-S2; qualquer mudança de política, taxonomia ou quotas exige nova versão e aprovação científica. Palavras normalizadas não são tokens, e C1-S2 não seleciona a mistura final A/B/C;
 - registrar políticas aplicáveis de fonte/idioma/qualidade/licença e capacidades reais pós-holdout, tolerâncias de cotas e qualquer reutilização explícita. A seleção do vencedor A/B/C fica para os experimentos posteriores;
-- em C2, medir fragmentação e cobertura por domínio para caracterizar limitações de representatividade; essas medições ainda não foram realizadas;
 - fixar a implementação futura de avaliação no C7, usando a convenção CALAME já aprovada; isso não autoriza implementação C7 neste estágio.
 
 Status: **IN PROGRESS**
@@ -110,23 +107,25 @@ português.
 Deve comparar configurações candidatas usando métricas objetivas de
 fragmentação e cobertura.
 
-Implementação C2 validada em escopo limitado: matriz de seis candidatos
-SentencePiece, comandos separados `train`/`evaluate`/`compare`, seleção fixa e
-estratificada na validação C1-S1, métricas por fonte/subset/domínio e artefatos
-com identidades e checksums. Foram executados testes unitários, treinamento
-sintético pequeno e verificações bounded; nenhum tokenizer de produção foi
-treinado e nenhuma comparação final foi realizada. O viés Carolina `wik`/`leg`
-de C1-S2 deve permanecer visível nos relatórios. Não há vencedor declarado.
-
-Status: **IN PROGRESS**
+Matriz dos seis candidatos SentencePiece executada na validação fixa C1-S1;
+artefatos, amostra e tabelas de comparação passaram pelas verificações de
+identidade e checksum. O cientista aprovou SentencePiece Unigram 24.576
+(`unigram-v24576`) como tokenizer definitivo para o primeiro treinamento.
+Resultados completos e hashes estão em
+[`C2_TOKENIZER_SELECTION_V1.md`](C2_TOKENIZER_SELECTION_V1.md). O comando de
+comparação permanece neutro e não declara vencedor. C2 está **COMPLETE / SCIENTIST
+APPROVED / VERIFIED**.
 
 ## C3 — Arquitetura e benchmark na Orion
 
 **Objetivo:** escolher a arquitetura final dentro da faixa de 150–200M.
 
-Deve medir variantes candidatas na fração disponível da H100.
+O handoff de planejamento propõe três arquiteturas e uma comparação limitada;
+nenhuma arquitetura foi escolhida e nenhum benchmark foi executado. A
+configuração real da Orion ainda precisa ser validada no nó H100 alocado.
+Consulte [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md).
 
-Status: **PENDING**
+Status: **PLANNING ONLY / PENDING SCIENTIFIC AUTHORIZATION**
 
 ## C4 — Pipeline de dados e treinamento
 

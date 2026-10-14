@@ -28,7 +28,7 @@ shards, 20 candidate-hit rows, zero approximate-anchor evidence rows, and exit
 status 0.
 
 The BD3 scientific authorization is recorded in
-[`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENT_APPROVAL.md). No new scan,
+[`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENTIFIC_APPROVAL.md). No new scan,
 matching rule, threshold, or exclusion authority was introduced by BD4.
 
 ## Candidate matches and scientific classification
