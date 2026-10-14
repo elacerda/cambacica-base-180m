@@ -626,7 +626,10 @@ def _open_eval_index(path: Path, identity: Mapping[str, Any]) -> sqlite3.Connect
     )
     saved = {key: json.loads(value) for key, value in db.execute("SELECT key,value FROM meta")}
     current = {"identity": dict(identity)}
-    if saved and saved != current:
+    if saved and (
+        saved.get("identity") != current["identity"]
+        or set(saved) - {"identity", "assignment_checksum_sha256"}
+    ):
         db.close()
         raise ValueError("Evaluation scratch identity mismatch; use a fresh scratch directory")
     if not saved:
