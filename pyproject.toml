@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 near-census = "cambacica.corpus.dedup.near_census:main"
+tokenizer-sample = "cambacica.corpus.tokenizer_sample:main"
 
 [project.optional-dependencies]
 dev = [

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "status": "proposed_frozen_for_scientist_review",
+  "name": "c1-tokenizer-sample-v1",
+  "input_d1_manifest_sha256": "57370cd403f571e36172d19ff4310c52c2a3d1937fcdaef5e1462f56dc44d428",
+  "input_split_manifest_sha256": "8b937f90d40487c643fe48baa6b5c2950713fe2e0d2d534f3e2a3c08e74dbe16",
+  "input_assignments_sha256": "ef52e3cf3033934df13e3d16c207e1783c509dff6fb91954fb8c25ab719ece1e",
+  "reference_mix_config": "configs/corpus_mix_b.yaml",
+  "reference_mix_config_sha256": "4ff5faac9dc49466a3c19a6f8e020e340aead613a339ee7bcd62820c5a759d95",
+  "mixture": "B",
+  "target_normalized_words": 20000000,
+  "sampling_seed": 20261014,
+  "source_share_basis_points": {
+    "carolina": 2800,
+    "wikipedia_pt": 1800,
+    "parlamento_pt": 1000,
+    "gutenberg_pt": 400,
+    "gigaverbo_v2": 4000
+  },
+  "gigaverbo_residual_share_basis_points": 4000,
+  "gigaverbo_subset_weight_basis_points": {
+    "finepdfs_por_Latn": 3000,
+    "crawlPT_dedup": 1000,
+    "quati": 500,
+    "blogset": 500,
+    "fineweb_2_pt": 3500,
+    "mc4_pt": 500,
+    "hplt2_pt": 500,
+    "hplt1_pt": 200,
+    "common_crawl": 100,
+    "oscar": 100,
+    "culturax": 100
+  },
+  "ranking": {
+    "algorithm": "sha256",
+    "namespace": "cambacica-c1-tokenizer-sample-v1",
+    "fields": ["sampling_seed", "doc_id"],
+    "tie_break": "doc_id_ascending"
+  },
+  "materialization_frame": {
+    "algorithm": "sha256",
+    "namespace": "cambacica-c1-tokenizer-frame-v1",
+    "fields": ["sampling_seed", "sample_bucket", "source_shard", "source_row_group"],
+    "tie_break": ["source_shard_ascending", "source_row_group_ascending"],
+    "word_capacity_multiplier": 10,
+    "purpose": "limit_source_reads_to_deterministically_ranked_Parquet_row_groups_while_retaining_document_level_ranking_within_the_frame"
+  },
+  "selection": {
+    "eligible_split": "train",
+    "unit": "complete_document",
+    "duplicate_policy": "fail_on_duplicate_doc_id_or_source_coordinate",
+    "quota_fit": "rank_documents_per_source_or_gigaverbo_subset; include_a_document_only_when_its_complete_word_count_fits_the_remaining_bucket_quota",
+    "zero_word_documents": "do_not_select",
+    "quota_redistribution": false,
+    "oversampling": false,
+    "text_mutation": false
+  },
+  "quota_tolerance": {
+    "maximum_total_shortfall_basis_points": 100,
+    "maximum_source_shortfall_basis_points": 100,
+    "gutenberg_pt_maximum_source_shortfall_basis_points": 1000,
+    "maximum_gigaverbo_subset_shortfall_basis_points": 100,
+    "maximum_overshoot_words": 0,
+    "failure_behavior": "publish_selection_diagnostics_with_status_QUOTA_TOLERANCE_FAILED_and_refuse_materialization"
+  }
+}
