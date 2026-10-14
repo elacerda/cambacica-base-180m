@@ -1,11 +1,51 @@
 # C1-S2 — deterministic tokenizer sample
 
-**Status: implementation and synthetic validation only. Production selection,
-materialization, independent verification, and publication are NOT RUN.** The
-commands below are for the scientist to run manually on `cenpesor` after
-reviewing this implementation and its proposed quota tolerances.
+**Status: COMPLETE / VERIFIED (2026-10-14).** Production selection passed,
+materialization completed, and independent verification passed. The published
+sample is preserved as C1-S2 v1 at
+`/mnt/data/cambacica-base-180m/tokenizer-sample/c1-s2-v1/`.
 
-## Approved inputs and sample target
+| Production result | Value |
+| --- | --- |
+| Selection | `PASS` |
+| Materialization | `MATERIALIZED` |
+| Independent verification | `PASS` |
+| Documents | 46,583 |
+| Normalized words | 19,999,380 |
+| Shortfall from 20,000,000-word target | 620 words (0.0031%) |
+| Selection manifest SHA-256 | `6086185af09357a6393b5de33d5a52442fd41caaa146191129e818bc19b45366` |
+| Sample manifest SHA-256 | `93c6c5400115c80aa5f5a63b4b593a5bc45bc46ecea429c78ffa5718f978e97c` |
+| Published selection checksum manifest | PASS |
+| Published sample checksum manifest | PASS |
+
+The sample uses provisional mixture B, seed **20261014**, and train-only
+references from C1-S1. All source and GigaVerbo subset quota tolerances passed.
+These results fix the identity of C1-S2 v1; preserve it as published. Any
+modified taxonomy-balanced sample must receive a separate version and scientific
+approval.
+
+## Carolina taxonomy composition and representativeness
+
+The 5,600,000 Carolina words in this sample are distributed as follows:
+
+| Carolina taxonomy | Normalized words |
+| --- | ---: |
+| `wik` | 3,375,808 |
+| `leg` | 1,746,973 |
+| `uni` | 327,365 |
+| `dat` | 110,866 |
+| `soc` | 38,988 |
+| `jud` | 0 |
+| `pub` | 0 |
+
+`wik` plus `leg` account for approximately **91.5%** of Carolina words in this
+tokenizer sample. This concentration does not violate the approved source-level
+quota policy, but it may affect tokenizer representativeness across Portuguese
+registers. Do not describe the sample as linguistically unbiased or uniformly
+representative. During C2, measure fragmentation and coverage by domain; no such
+measurements are part of this C1-S2 production closure.
+
+## Pinned inputs and sample target
 
 The command pins these input artifacts by their exact manifest and payload
 identities:
@@ -92,8 +132,8 @@ always land exactly on an integer word target:
 Actual words, signed deviation, shortfall basis points, and pass/fail are written
 to `selection_manifest.json`. If any tolerance fails, `select` still publishes
 the diagnostics with status `QUOTA_TOLERANCE_FAILED`; `materialize` refuses that
-selection. There is no redistribution. The tolerances are proposed for review;
-they do not claim that a production sample was built.
+selection. There is no redistribution. The production result above passed these
+frozen tolerances.
 
 ## CLI interface
 
@@ -169,12 +209,13 @@ Before writing, the CLI checks Linux mount metadata: scratch cannot resolve to
 NFS/NFSv4, and the output path must resolve to the same filesystem type as the
 pinned input.
 
-## Production commands for `cenpesor`
+## Archived production command reference for `cenpesor`
 
-**NOT RUN.** These commands perform the scientist's production run. First
-choose a local scratch mount with at least 30 GB free and confirm the output
-filesystem has at least 2 GB free. The example uses `/tmp`; change
-`SAMPLE_SCRATCH` if that filesystem is not local or does not have enough space.
+Production is complete. The commands below preserve the planned operator
+procedure for reference; do not rerun them to recreate C1-S2 v1. The published
+output and its identities are recorded above. Any changed sample requires a new
+version and scientific approval. The procedure calls for at least 30 GB of
+local scratch and 2 GB free on the output filesystem; its example uses `/tmp`.
 
 ```bash
 export REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -251,10 +292,10 @@ checkpoint. Identity changes fail closed. Do not remove a `.partial` directory
 or SQLite state while trying to resume. If an output has already been atomically
 published, rerun `verify` to check it rather than rebuilding it in place.
 
-## Recommended `tmux` procedure
+## Archived optional `tmux` procedure
 
-**NOT RUN.** On `cenpesor`, start a persistent shell, prepare the paths, and run
-one operation at a time:
+This is a persistence suggestion for long-running operator commands, not a
+record of how the completed production was run:
 
 ```bash
 tmux new -s c1-s2-sample
@@ -266,26 +307,27 @@ selection manifest before starting `materialize`, then inspect the materialized
 manifest before starting `verify`. Keep the log files under `logs/` and retain
 the local scratch directory until verification passes.
 
-## Resource estimate and risks
+## Resource estimates and remaining limitations
 
-- **Local scratch:** budget at least **30 GB free**. Selection and independent
-  verification each stream 21,603,689 assignment rows through a disk-backed
-  SQLite table and a rank index. The SQLite database is expected to use roughly
-  12–25 GB, depending on text metadata lengths and SQLite page overhead.
-- **Memory:** provision at least **8 GB RAM**. Assignment and source text are
-  processed in bounded batches; a single exceptionally long document can still
-  raise peak batch memory.
-- **NFS output:** reserve at least **2 GB free** for the selected sample,
-  references, manifests, and temporary publication stage. Exact Parquet size is
-  data-dependent and has not been measured at production scale.
-- **Runtime:** no production throughput benchmark was run. Selection and
-  verification each checksum and decode the 2.48 GB assignment artifact and
-  write/index SQLite state; budget an overnight window on a shared host.
+- **Local scratch:** the pre-production estimate was at least **30 GB free**.
+  Selection and independent verification each stream 21,603,689 assignment rows
+  through a disk-backed SQLite table and a rank index. The SQLite database was
+  expected to use roughly 12–25 GB, depending on text metadata lengths and
+  SQLite page overhead. These are planning estimates, not recorded production
+  measurements.
+- **Memory:** the pre-production recommendation was at least **8 GB RAM**.
+  Assignment and source text are processed in bounded batches; a single
+  exceptionally long document can still raise peak batch memory. The production
+  handoff captured here does not include measured peak memory.
+- **Output and runtime:** the pre-production estimate reserved at least **2 GB**
+  for the selected sample and temporary publication stage and budgeted an
+  overnight run. Actual output size, elapsed times, and production throughput
+  measurements are not included in this closure summary.
 - **D1 reads:** selection and verification read D1 Parquet footers for the
   pinned shard layout. Materialization reads only selected row groups, but each
-  selected group is decompressed and may contain unselected neighbors. The
-  actual frame capacity and physical bytes read are not known until selection
-  produces its report.
+  selected group is decompressed and may contain unselected neighbors. Consult
+  the selection manifest for the actual frame report; this closure summary does
+  not claim a physical-byte read total.
 - **Checksums:** materialization recomputes SHA-256 and word counts for each
   selected text, checks source revision/subset/document identity, and validates
   the pinned D1 manifest plus source-file size and read-time stat. It does not
@@ -297,7 +339,7 @@ the local scratch directory until verification passes.
 - **Rights:** C1-S2 changes no inherited source licensing decisions. Existing
   C1-S1 rights caveats remain applicable.
 
-## Validation performed for this implementation
+## Implementation validation and production verification
 
 The synthetic test module covers changed assignment traversal and batch sizes,
 train-only membership, stable IDs, whole-document counts and text hashes,
@@ -308,6 +350,8 @@ The real-data checks were limited to pinned manifest/checksum identities, the
 representative D1 Parquet footers, and 16 records from one D1 row group with
 text-hash/source checks. A separate 16-ID lookup through assignment row-group
 statistics was stopped after 30 seconds because footer-stat traversal was
-slower than expected; it did not decode assignment rows. No full-assignment
-selection, production materialization, independent full verification, or
-publication was run.
+slower than expected; it did not decode assignment rows. These bounded
+implementation checks preceded production. The full production selection,
+materialization, publication, and independent verification are complete as
+summarized at the top of this document; both published checksum manifests
+passed.

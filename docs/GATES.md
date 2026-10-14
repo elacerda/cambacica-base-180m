@@ -64,6 +64,7 @@ Progresso atual:
 - exclusões por contaminação de benchmarks: **ZERO**; workstream de decontaminação **CLOSED FOR FIRST TRAINING**.
 - C1-S1: **BOUNDED VALIDATION PASS / SPLIT POLICY PROPOSED**; contrato determinístico e readiness A/B/C em [`C1_SPLIT_AND_MIXTURE_READINESS.md`](C1_SPLIT_AND_MIXTURE_READINESS.md). Amostra de 2.991 registros, 21 estratos fonte/subset, zero overlap de IDs entre splits, reconstrução independente com ordem e batches diferentes;
 - proposta de split: 98%/1%/1% por grupos dentro de fonte/subset, com cobertura mínima para estratos pequenos; execução completa **NOT RUN**, aguardando aprovação científica;
+- C1-S2: **COMPLETE / VERIFIED**; seleção **PASS**, materialização **MATERIALIZED** e verificação independente **PASS**. A versão v1 tem 46.583 documentos e 19.999.380 palavras normalizadas (shortfall de 620); todas as tolerâncias de cotas por fonte e subset passaram. Identidades, checksums e ressalvas científicas estão em [`C1_TOKENIZER_SAMPLE.md`](C1_TOKENIZER_SAMPLE.md). O sample preserva a referência provisória B e não escolhe a mistura final A/B/C;
 - CALAME: convenção já aprovada de **2.076 linhas de snapshot / 2.075 avaliáveis**, excluindo somente o alvo whitespace da linha 718 do denominador futuro; implementação C7 permanece futura;
 - A/B/C continuam hipóteses: A curated-heavy, B balanced (referência provisória de preparação), C residual-heavy control. O vencedor será escolhido depois de experimentos comparáveis com tokenizer C2 e arquitetura C3 fixos.
 
@@ -92,8 +93,9 @@ Próximos critérios de C1:
 
 - confirmar a base de uso científico local quando a autorização existente não cobrir os caveats de direitos; separar revisão de direitos para publicação/redistribuição. Não há novo estudo de decontaminação pendente;
 - aprovar o contrato C1-S1 de split/grupos/estratos raros e suas limitações, executar somente então o pass completo de referências e verificar manifests/estatísticas;
-- aprovar a política e fixar as identidades da amostra de tokenizer derivada apenas do treino (B como referência provisória); palavras normalizadas não são tokens;
+- manter C1-S2 v1 como a identidade congelada para C2; qualquer amostra com taxonomia ou quotas alteradas exige nova versão e aprovação científica. Palavras normalizadas não são tokens, e C1-S2 não seleciona a mistura final A/B/C;
 - registrar políticas aplicáveis de fonte/idioma/qualidade/licença e capacidades reais pós-holdout, tolerâncias de cotas e qualquer reutilização explícita. A seleção do vencedor A/B/C fica para os experimentos posteriores;
+- em C2, medir fragmentação e cobertura por domínio para caracterizar limitações de representatividade; essas medições ainda não foram realizadas;
 - fixar a implementação futura de avaliação no C7, usando a convenção CALAME já aprovada; isso não autoriza implementação C7 neste estágio.
 
 Status: **IN PROGRESS**
