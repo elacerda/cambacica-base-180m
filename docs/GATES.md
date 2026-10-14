@@ -87,7 +87,9 @@ Progresso atual:
 - decisão científica de near dedup para a primeira execução: **APPROVED / CLOSED**; preservar todos os registros pós-D1, com zero remoções por near dedup. A recomendação B de D2d permanece somente como direção futura. Veja [`C1_NEAR_DEDUP_FINAL_DECISION.md`](C1_NEAR_DEDUP_FINAL_DECISION.md);
 - produção de near dedup: **NOT RUN BY DESIGN**; não é um blocker para a decontaminação de benchmarks;
 - decontaminação de benchmarks: **BD1 APPROVED; BD2–BD2.6 COMPLETE; BD3 COMPLETE / VERIFIED; BD4 COMPLETE / SCIENTIST APPROVED**. Decisão para o primeiro treinamento: reter os 18 documentos afetados e excluir zero; corpus pós-D1 preservado. O workstream está **CLOSED FOR FIRST TRAINING**. Não é necessária outra experiência de decontaminação para essa decisão. Veja o registro BD4 [`C1_BENCHMARK_DECONTAMINATION_BD4.md`](C1_BENCHMARK_DECONTAMINATION_BD4.md), a aprovação BD3 [`C1_BD3_SCIENTIFIC_APPROVAL.md`](C1_BD3_SCIENTIFIC_APPROVAL.md), a aprovação inicial [`C1_BENCHMARK_DECONTAMINATION_APPROVAL.md`](C1_BENCHMARK_DECONTAMINATION_APPROVAL.md), os resultados BD2 [`C1_BENCHMARK_DECONTAMINATION_BD2.md`](C1_BENCHMARK_DECONTAMINATION_BD2.md), o preflight [`C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md`](C1_BENCHMARK_DECONTAMINATION_PREFLIGHT.md), a recuperação [`C1_BENCHMARK_DECONTAMINATION_RECOVERY.md`](C1_BENCHMARK_DECONTAMINATION_RECOVERY.md) e o plano [`C1_BENCHMARK_DECONTAMINATION_PLAN.md`](C1_BENCHMARK_DECONTAMINATION_PLAN.md);
-- o Gate C1 continua **IN PROGRESS**; C2 permanece **PENDING**.
+- o Gate C1 continua **IN PROGRESS** enquanto direitos e políticas de uso não
+  estiverem resolvidos; C2 iniciou somente após a validação limitada da
+  implementação descrita em [`C2_TOKENIZER_EXPERIMENTS.md`](C2_TOKENIZER_EXPERIMENTS.md).
 
 Próximos critérios de C1:
 
@@ -108,7 +110,15 @@ português.
 Deve comparar configurações candidatas usando métricas objetivas de
 fragmentação e cobertura.
 
-Status: **PENDING**
+Implementação C2 validada em escopo limitado: matriz de seis candidatos
+SentencePiece, comandos separados `train`/`evaluate`/`compare`, seleção fixa e
+estratificada na validação C1-S1, métricas por fonte/subset/domínio e artefatos
+com identidades e checksums. Foram executados testes unitários, treinamento
+sintético pequeno e verificações bounded; nenhum tokenizer de produção foi
+treinado e nenhuma comparação final foi realizada. O viés Carolina `wik`/`leg`
+de C1-S2 deve permanecer visível nos relatórios. Não há vencedor declarado.
+
+Status: **IN PROGRESS**
 
 ## C3 — Arquitetura e benchmark na Orion
 
