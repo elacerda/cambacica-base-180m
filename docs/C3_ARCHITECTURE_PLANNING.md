@@ -1,9 +1,12 @@
 # C3 architecture-planning handoff
 
-**Status: planning only, 2026-10-14.** C2 has frozen SentencePiece Unigram
-24,576; C3 has not selected an architecture or context length. This document
-defines a bounded comparison plan and candidate shapes for scientific review.
-It does not authorize GPU work or freeze any training recipe.
+**Status: implementation prepared, 2026-10-15.** C2 has frozen SentencePiece
+Unigram 24,576; C3 has not selected an architecture or context length. The
+implementation and benchmark handoff are in
+[`C3_ARCHITECTURE_IMPLEMENTATION.md`](C3_ARCHITECTURE_IMPLEMENTATION.md),
+[`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md), and
+[`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md). No GPU benchmark or
+learning-quality pilot has been run.
 
 The target remains a decoder-only causal base language model with a nominal
 scale of approximately 180M parameters. The selected tokenizer is
@@ -53,13 +56,23 @@ cost in actual packed sequences before a context is chosen.
 
 ## H100 memory and compute planning
 
-The project scope names approximately 40 GB of a single H100 on Orion. The
-current inspected host is `cenpesor`; `nvidia-smi` could not communicate with
-an NVIDIA driver, and no Orion allocation profile is available here. The
-actual GPU model, usable memory, partition/MIG mode, driver, CUDA runtime, and
-scheduler allocation therefore remain **unverified**. Before C3 benchmarking,
-record these from the allocated Orion node and confirm BF16 and the chosen
-attention kernels there. No H100 capability is inferred from the current host.
+The scientist verified the Orion host `cenpesor`: physical GPU 0 and GPU 1 are
+NVIDIA H100 PCIe devices with 81,559 MiB each; the driver is 550.54.14 and the
+kernel is 5.15.0-191-generic. GPU 0's approved UUID is
+`GPU-7562e34d-b0a2-a725-2ad5-ed1327be3cb0`. GPU 0 had 7,026 MiB used and
+73,968 MiB free in the reviewed inventory snapshot, including two unrelated
+Python processes. GPU 1 had 68,365 MiB used and 12,630 MiB free, and hosts the
+healthy `vllm-qwen38-27b` service. These utilization values are snapshots, not
+reservations.
+
+Cambacica is restricted to physical GPU 0 and a 40,960 MiB operational budget.
+The initial process peak target is 36,864 MiB with a 4,096 MiB safety margin.
+The benchmark verifies the CUDA-visible-to-physical mapping, applies a
+35,840 MiB PyTorch allocator limit, and samples process/device memory through
+NVML. These controls are not a hardware partition and cannot constrain all
+CUDA contexts, direct library allocations, or concurrent external allocations;
+the runbook documents that limitation and fail-closed conditions. GPU 1 and
+the Qwen service must remain untouched.
 
 For a tied 175–180M model, BF16 weights occupy about 0.35–0.36 GB. A rough
 persistent-state estimate with BF16 parameters and gradients, two FP32 Adam
@@ -78,9 +91,10 @@ Doubling context to 8,192 doubles linear activations, while a naive attention
 score tensor grows with `batch × heads × context²`. Flash-style attention
 kernels can avoid materializing that full score tensor; the actual kernel and
 activation-checkpointing policy must be measured. A preliminary planning
-guardrail is to keep steady peak use below 32 GiB when 40 GiB is actually
-available, reserving the remainder for workspaces and runtime variation. This
-guardrail is a proposal, not a frozen limit.
+estimate is not a memory measurement. The implementation's operational
+policy sets a 36 GiB initial process peak target inside the approved 40 GiB
+budget; its allocator and NVML limits are described in
+[`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md).
 
 Dense-transformer training compute is approximately `6 × parameter_count ×
 training_tokens`, plus context-dependent attention overhead. At 180M parameters
@@ -99,8 +113,9 @@ benchmark recipe.
 
 ## Bounded benchmark proposal
 
-After C3 receives implementation authorization, use at most these three
-shapes and the two proposed contexts (six primary shape/context combinations):
+After the scientist reviews the implementation and authorizes execution, use
+at most these three shapes and the two proposed contexts (six primary
+shape/context combinations):
 
 1. Verify the actual Orion node and software stack, then calculate exact
    parameter totals from the implementation and check the available memory.
@@ -131,7 +146,7 @@ generation speed.
   shape.
 - Final context length and document-packing accounting for byte-fallback
   structural characters.
-- Confirmation of Orion's actual GPU allocation and available memory.
+- Free memory available on GPU 0 when each benchmark starts.
 - Precision, attention implementation, activation checkpointing, optimizer,
   microbatch/effective batch, and learning-rate schedule.
 - Whether to authorize the equal-token C3 learning pilot and its separate
@@ -139,6 +154,7 @@ generation speed.
 - Source usage/rights resolution and final corpus mixture A/B/C. Mixture B is
   still only the provisional tokenizer-sampling reference.
 
-No C3 training infrastructure, GPU benchmark, production job, optimizer, final
-token budget, or corpus mixture is implemented or frozen by this planning
+The C3 model and synthetic benchmark framework are implemented. No GPU
+benchmark, production job, learning-quality pilot, final training optimizer,
+token budget, or corpus mixture has been executed or frozen by this planning
 handoff.

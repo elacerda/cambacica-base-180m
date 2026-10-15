@@ -120,12 +120,35 @@ APPROVED / VERIFIED**.
 
 **Objetivo:** escolher a arquitetura final dentro da faixa de 150–200M.
 
-O handoff de planejamento propõe três arquiteturas e uma comparação limitada;
-nenhuma arquitetura foi escolhida e nenhum benchmark foi executado. A
-configuração real da Orion ainda precisa ser validada no nó H100 alocado.
-Consulte [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md).
+As três propostas A/B/C têm implementação PyTorch e contagem analítica de
+parâmetros; o framework de benchmark sintético cobre os seis pares de
+arquitetura/contexto (2.048 e 4.096). A validação local limitada passou para
+contabilidade, configuração, política de GPU mockada, métricas e artefatos.
+Testes que dependem de PyTorch foram ignorados porque o pacote opcional não
+está instalado neste ambiente. Resultado local: `pytest` 289 passed / 9
+skipped; `ruff check .` passou. Nenhum CUDA/GPU, benchmark, corpus de produção
+ou piloto de qualidade foi executado.
 
-Status: **PLANNING ONLY / PENDING SCIENTIFIC AUTHORIZATION**
+O manual fixa GPU física 0 de `cenpesor`, UUID
+`GPU-7562e34d-b0a2-a725-2ad5-ed1327be3cb0`, orçamento operacional máximo de
+40.960 MiB e alvo inicial de pico de 36.864 MiB. GPU 1 e o serviço Qwen ficam
+fora do escopo. Limitações do allocator PyTorch e monitoramento NVML estão
+registradas no método e runbook.
+
+Continuam indecididos: arquitetura A/B/C, contexto final, tying, optimizer e
+schedule, batch efetivo, orçamento de tokens, mistura final A/B/C e
+autorização/tamanho de qualquer piloto de qualidade.
+
+Consulte [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md),
+[`C3_ARCHITECTURE_IMPLEMENTATION.md`](C3_ARCHITECTURE_IMPLEMENTATION.md),
+[`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md) e
+[`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md).
+
+Status: **IN PROGRESS — bounded CPU implementation checks complete; scientist review and GPU benchmark pending**
+
+C3 só poderá ser marcado **COMPLETE** depois que o cientista revisar e aprovar
+os resultados experimentais. A implementação não congela a arquitetura ou a
+receita de treinamento.
 
 ## C4 — Pipeline de dados e treinamento
 

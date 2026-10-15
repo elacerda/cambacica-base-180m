@@ -40,10 +40,14 @@ somente a referência provisória para amostragem do tokenizer. Consulte os
 [gates do projeto](docs/GATES.md) e o [estado e identidades do split
 C1-S1](docs/C1_SPLIT_AND_MIXTURE_READINESS.md).
 
-C3 está em planejamento. A arquitetura, o context length, o optimizer, o
-orçamento final de tokens e a receita de treinamento continuam sem decisão.
-As propostas para revisão científica estão em
-[`docs/C3_ARCHITECTURE_PLANNING.md`](docs/C3_ARCHITECTURE_PLANNING.md).
+C3 tem implementação do modelo e framework de benchmark sintético preparados;
+nenhum benchmark de GPU foi executado e nenhuma arquitetura foi selecionada.
+Arquitetura, context length, tying, optimizer, batch efetivo, orçamento final
+de tokens, mistura do corpus e autorização de piloto de qualidade continuam
+sem decisão. Consulte o [plano](docs/C3_ARCHITECTURE_PLANNING.md), a
+[implementação](docs/C3_ARCHITECTURE_IMPLEMENTATION.md), a
+[metodologia do benchmark](docs/C3_BENCHMARK_METHODOLOGY.md) e o
+[runbook manual para Orion](docs/C3_BENCHMARK_RUNBOOK.md).
 
 ## Princípios
 
