@@ -5,8 +5,8 @@ import pytest
 torch = pytest.importorskip("torch", reason="PyTorch is an optional C3 dependency")
 F = torch.nn.functional
 
-from cambacica.model.config import ARCHITECTURES, ArchitectureSpec  # noqa: E402
-from cambacica.model.transformer import (  # noqa: E402
+from cambacica.model.config import ARCHITECTURES, ArchitectureSpec
+from cambacica.model.transformer import (
     CambacicaCausalLM,
     RotaryEmbedding,
     count_instantiated_parameters,
@@ -20,7 +20,9 @@ def tiny_spec() -> ArchitectureSpec:
 
 @pytest.mark.parametrize("architecture_id", ("A", "B", "C"))
 @pytest.mark.parametrize("tie_weights", (True, False))
-def test_meta_candidate_counts_match_analytical(architecture_id: str, tie_weights: bool) -> None:
+def test_meta_candidate_counts_match_analytical(
+    architecture_id: str, tie_weights: bool
+) -> None:
     spec = ARCHITECTURES[architecture_id]
     model = CambacicaCausalLM(
         spec,
@@ -43,7 +45,9 @@ def test_tied_and_untied_models_share_or_separate_output_weight() -> None:
 
 
 def test_model_refuses_unseeded_direct_cuda_initialization() -> None:
-    with pytest.raises(ValueError, match="move to CUDA only after GPU safety preflight"):
+    with pytest.raises(
+        ValueError, match="move to CUDA only after GPU safety preflight"
+    ):
         CambacicaCausalLM(tiny_spec(), seed=3, device="cuda:0")
 
 
@@ -75,7 +79,9 @@ def test_forward_loss_shift_finite_gradients_and_generation_logits() -> None:
     token_ids = torch.tensor([[1, 2, 3, 4, 5], [8, 7, 6, 5, 4]], dtype=torch.long)
     logits, loss = next_token_loss(model, token_ids)
     assert logits.shape == (2, 4, 31)
-    manual_loss = F.cross_entropy(logits.float().reshape(-1, 31), token_ids[:, 1:].reshape(-1))
+    manual_loss = F.cross_entropy(
+        logits.float().reshape(-1, 31), token_ids[:, 1:].reshape(-1)
+    )
     assert torch.allclose(loss, manual_loss)
     assert torch.isfinite(loss)
     loss.backward()
@@ -93,20 +99,24 @@ def test_future_tokens_do_not_change_earlier_logits() -> None:
     with torch.inference_mode():
         left_logits = model(left)
         changed_logits = model(changed_future)
-    assert torch.allclose(left_logits[:, :3], changed_logits[:, :3], atol=1e-6, rtol=1e-6)
+    assert torch.allclose(
+        left_logits[:, :3], changed_logits[:, :3], atol=1e-6, rtol=1e-6
+    )
 
 
 def test_rope_identity_at_zero_and_preserves_vector_norms() -> None:
     rope = RotaryEmbedding(4)
     query = torch.randn(1, 2, 3, 4)
     key = torch.randn(1, 2, 3, 4)
-    rotated_query, rotated_key = rope.apply(query, key)
+    rotated_query, rotated_key = rope.apply_rotary(query, key)
     assert torch.allclose(rotated_query[:, :, 0], query[:, :, 0], atol=1e-6)
     assert torch.allclose(rotated_key[:, :, 0], key[:, :, 0], atol=1e-6)
     assert torch.allclose(
         rotated_query.norm(dim=-1), query.norm(dim=-1), atol=1e-5, rtol=1e-5
     )
-    assert torch.allclose(rotated_key.norm(dim=-1), key.norm(dim=-1), atol=1e-5, rtol=1e-5)
+    assert torch.allclose(
+        rotated_key.norm(dim=-1), key.norm(dim=-1), atol=1e-5, rtol=1e-5
+    )
 
 
 def test_initialization_is_seeded() -> None:

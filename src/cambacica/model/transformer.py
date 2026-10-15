@@ -53,7 +53,11 @@ class RotaryEmbedding(nn.Module):
         if head_dim % 2:
             raise ValueError("RoPE requires an even head dimension")
         inv_freq = 1.0 / (
-            theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32, device=device) / head_dim)
+            theta
+            ** (
+                torch.arange(0, head_dim, 2, dtype=torch.float32, device=device)
+                / head_dim
+            )
         )
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
@@ -68,8 +72,10 @@ class RotaryEmbedding(nn.Module):
         first, second = value.chunk(2, dim=-1)
         return torch.cat((-second, first), dim=-1)
 
-    def apply(self, query: Tensor, key: Tensor) -> tuple[Tensor, Tensor]:
-        cos, sin = self.cos_sin(query.shape[-2], device=query.device, dtype=torch.float32)
+    def apply_rotary(self, query: Tensor, key: Tensor) -> tuple[Tensor, Tensor]:
+        cos, sin = self.cos_sin(
+            query.shape[-2], device=query.device, dtype=torch.float32
+        )
         cos = cos[None, None, :, :]
         sin = sin[None, None, :, :]
         query_fp32 = query.float()
@@ -90,10 +96,18 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         self.num_heads = spec.num_attention_heads
         self.head_dim = spec.head_dim
-        self.q_proj = nn.Linear(spec.hidden_size, spec.hidden_size, bias=False, device=device)
-        self.k_proj = nn.Linear(spec.hidden_size, spec.hidden_size, bias=False, device=device)
-        self.v_proj = nn.Linear(spec.hidden_size, spec.hidden_size, bias=False, device=device)
-        self.o_proj = nn.Linear(spec.hidden_size, spec.hidden_size, bias=False, device=device)
+        self.q_proj = nn.Linear(
+            spec.hidden_size, spec.hidden_size, bias=False, device=device
+        )
+        self.k_proj = nn.Linear(
+            spec.hidden_size, spec.hidden_size, bias=False, device=device
+        )
+        self.v_proj = nn.Linear(
+            spec.hidden_size, spec.hidden_size, bias=False, device=device
+        )
+        self.o_proj = nn.Linear(
+            spec.hidden_size, spec.hidden_size, bias=False, device=device
+        )
         self.rope = RotaryEmbedding(spec.head_dim, device=device)
         self.attention_backend = attention_backend
 
@@ -103,7 +117,7 @@ class CausalSelfAttention(nn.Module):
         query = self.q_proj(value).view(shape).transpose(1, 2)
         key = self.k_proj(value).view(shape).transpose(1, 2)
         projected_value = self.v_proj(value).view(shape).transpose(1, 2)
-        query, key = self.rope.apply(query, key)
+        query, key = self.rope.apply_rotary(query, key)
         with attention_backend_context(self.attention_backend):
             attended = F.scaled_dot_product_attention(
                 query,
@@ -113,8 +127,10 @@ class CausalSelfAttention(nn.Module):
                 dropout_p=0.0,
                 is_causal=True,
             )
-        attended = attended.transpose(1, 2).contiguous().view(
-            batch_size, sequence_length, hidden_size
+        attended = (
+            attended.transpose(1, 2)
+            .contiguous()
+            .view(batch_size, sequence_length, hidden_size)
         )
         return self.o_proj(attended)
 
@@ -173,7 +189,9 @@ class CambacicaCausalLM(nn.Module):
         super().__init__()
         if attention_backend not in ATTENTION_BACKENDS:
             raise ValueError(f"Unsupported attention backend: {attention_backend}")
-        initial_device = torch.device(device) if device is not None else torch.device("cpu")
+        initial_device = (
+            torch.device(device) if device is not None else torch.device("cpu")
+        )
         if initial_device.type not in {"cpu", "meta"}:
             raise ValueError(
                 "initialize on CPU or meta for seeded weights; move to CUDA only "
@@ -185,7 +203,9 @@ class CambacicaCausalLM(nn.Module):
         self.activation_dtype = activation_dtype
         with torch.random.fork_rng(devices=[]):
             torch.random.default_generator.manual_seed(seed)
-            self.token_embedding = nn.Embedding(spec.vocab_size, spec.hidden_size, device=device)
+            self.token_embedding = nn.Embedding(
+                spec.vocab_size, spec.hidden_size, device=device
+            )
             self.layers = nn.ModuleList(
                 DecoderBlock(spec, attention_backend, device=device)
                 for _ in range(spec.num_layers)
@@ -246,7 +266,9 @@ def count_instantiated_parameters(model: nn.Module) -> int:
     return sum(parameter.numel() for parameter in model.parameters())
 
 
-def next_token_loss(model: CambacicaCausalLM, token_ids: Tensor) -> tuple[Tensor, Tensor]:
+def next_token_loss(
+    model: CambacicaCausalLM, token_ids: Tensor
+) -> tuple[Tensor, Tensor]:
     """Run the model on all but the final token and align next-token labels."""
 
     if token_ids.ndim != 2 or token_ids.shape[1] < 2:
