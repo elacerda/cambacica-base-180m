@@ -23,6 +23,7 @@ near-census = "cambacica.corpus.dedup.near_census:main"
 tokenizer-sample = "cambacica.corpus.tokenizer_sample:main"
 cambacica-tokenizer = "cambacica.tokenizer.experiments:main"
 cambacica-benchmark = "cambacica.benchmark.cli:main"
+cambacica-c3-scalability = "cambacica.benchmark.scalability_cli:main"
 
 [project.optional-dependencies]
 dev = [
