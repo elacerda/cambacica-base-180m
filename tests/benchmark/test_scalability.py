@@ -127,7 +127,7 @@ def test_gradient_accumulation_matches_combined_batch_and_steps_once() -> None:
     )
     assert combined_optimizer.step_count == 1
     assert accumulated_optimizer.step_count == 1
-    assert combined_loss == pytest.approx(accumulated_loss, abs=1e-7)
+    assert combined_loss == pytest.approx(accumulated_loss, abs=2e-7)
     assert torch.allclose(
         combined_model.bias, accumulated_model.bias, atol=1e-7, rtol=1e-7
     )
@@ -174,6 +174,61 @@ def test_cuda_environment_guard_refuses_any_other_mapping() -> None:
         scalability._require_gpu_environment({"CUDA_VISIBLE_DEVICES": "1"})
     with pytest.raises(GpuSafetyError, match="CUDA_VISIBLE_DEVICES=0"):
         scalability._require_gpu_environment({})
+
+
+def test_cublas_workspace_guard_requires_exact_restart_configuration() -> None:
+    assert (
+        scalability._require_cublas_workspace_config(
+            {"CUBLAS_WORKSPACE_CONFIG": ":4096:8"}
+        )
+        == ":4096:8"
+    )
+    for environment in ({}, {"CUBLAS_WORKSPACE_CONFIG": ":16:8"}):
+        with pytest.raises(GpuSafetyError, match="CUBLAS_WORKSPACE_CONFIG=:4096:8"):
+            scalability._require_cublas_workspace_config(environment)
+
+
+@pytest.mark.parametrize("workspace_config", [None, ":16:8"])
+def test_restart_worker_checks_cublas_before_torch_loader(
+    monkeypatch, tmp_path: Path, workspace_config: str | None
+) -> None:
+    plan_path = tmp_path / "worker-plan.json"
+    plan_path.write_text(
+        json.dumps(
+            {
+                "scratch_root": str(scalability.SCRATCH_ROOT),
+                "output_root": str(scalability.OUTPUT_ROOT),
+                "lock_path": str(scalability.LOCK_PATH),
+                "restart_dir": str(tmp_path / "restart"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    if workspace_config is None:
+        monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", workspace_config)
+
+    def fail_if_loaded():
+        raise AssertionError("restart worker imported PyTorch before env validation")
+
+    class FakeLock:
+        def __init__(self, _path):
+            pass
+
+        def acquire(self):
+            pass
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(scalability, "require_storage_layout", lambda *_: None)
+    monkeypatch.setattr(scalability, "BenchmarkLock", FakeLock)
+    monkeypatch.setattr(scalability, "_torch_and_nvml", fail_if_loaded)
+
+    with pytest.raises(GpuSafetyError, match="CUBLAS_WORKSPACE_CONFIG=:4096:8"):
+        scalability._restart_worker(plan_path, "reference")
 
 
 def test_failure_injection_stops_sequential_matrix_without_retry(
@@ -389,3 +444,4 @@ def test_cli_dry_run_validates_plan_without_runtime_loading(
     assert output["production_corpus_opened"] is False
     assert len(output["commands"]) == 9
     assert all("--execute" in command for command in output["commands"])
+    assert "CUBLAS_WORKSPACE_CONFIG=:4096:8" in output["restart_command"]

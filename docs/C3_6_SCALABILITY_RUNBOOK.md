@@ -56,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src /srv/cambacica-c3/venv/bin/python -m camba
 Run the separate fresh-process checkpoint/restart validation after the matrix:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src \
+CUDA_VISIBLE_DEVICES=0 CUBLAS_WORKSPACE_CONFIG=:4096:8 PYTHONPATH=src \
   /srv/cambacica-c3/venv/bin/python \
   -m cambacica.benchmark.scalability_cli restart-check \
   --suite-id c36-20261016-orion-gpu0 --execute

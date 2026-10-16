@@ -76,6 +76,7 @@ GPU_MEMORY_BUDGET_MIB = 40_960
 PROCESS_PEAK_TARGET_MIB = 36_864
 TORCH_ALLOCATOR_LIMIT_MIB = 35_840
 MINIMUM_FREE_MEMORY_MIB = 4_096
+CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 CELL_IDS = tuple(
     f"cell-m{microbatch}-a{accumulation}"
     for microbatch in (1, 2, 4)
@@ -552,6 +553,19 @@ def _require_gpu_environment(environ: dict[str, str] | None = None) -> None:
         )
 
 
+def _require_cublas_workspace_config(
+    environ: dict[str, str] | None = None,
+) -> str:
+    values = os.environ if environ is None else environ
+    observed = values.get("CUBLAS_WORKSPACE_CONFIG")
+    if observed != CUBLAS_WORKSPACE_CONFIG:
+        raise GpuSafetyError(
+            "set CUBLAS_WORKSPACE_CONFIG=:4096:8 exactly before "
+            "C3.6 deterministic restart execution"
+        )
+    return CUBLAS_WORKSPACE_CONFIG
+
+
 def _benchmark_config(
     cell: CellConfig, scratch_root: Path, output_root: Path
 ) -> BenchmarkConfig:
@@ -581,7 +595,9 @@ def _set_nondeterministic_benchmark_settings(torch_module: Any) -> None:
         torch_module.backends.cuda.matmul.allow_tf32 = False
 
 
-def _configure_deterministic_restart(torch_module: Any) -> dict[str, object]:
+def _configure_deterministic_restart(
+    torch_module: Any, *, cublas_workspace_config: str
+) -> dict[str, object]:
     torch_module.backends.cudnn.benchmark = False
     torch_module.backends.cudnn.deterministic = True
     if hasattr(torch_module.backends.cuda.matmul, "allow_tf32"):
@@ -598,6 +614,7 @@ def _configure_deterministic_restart(torch_module: Any) -> dict[str, object]:
         ),
         "attention_backend": "auto",
         "backend_fallback_or_switch": False,
+        "effective_cublas_workspace_config": cublas_workspace_config,
     }
 
 
@@ -1161,6 +1178,7 @@ def _configuration_identity(
     gpu_identity: dict[str, object],
     stream_hash: str,
     deterministic_settings: dict[str, object],
+    cublas_workspace_config: str,
     attention_backend: dict[str, object],
 ) -> dict[str, object]:
     return {
@@ -1181,6 +1199,7 @@ def _configuration_identity(
         "hostname": platform.node(),
         "hardware": gpu_identity,
         "deterministic_kernel_settings": deterministic_settings,
+        "effective_cublas_workspace_config": cublas_workspace_config,
         "attention_backend": {
             "requested": attention_backend.get("requested"),
             "observed": attention_backend.get("observed"),
@@ -1195,6 +1214,7 @@ def _restart_runtime(
     scratch_root: Path,
     output_root: Path,
     lock_path: Path,
+    cublas_workspace_config: str,
 ) -> tuple[
     CellConfig,
     BenchmarkConfig,
@@ -1209,7 +1229,9 @@ def _restart_runtime(
     if not torch_module.cuda.is_bf16_supported():
         raise GpuSafetyError("BF16 is not supported by the visible physical GPU 0")
     apply_allocator_limit(torch_module, config, snapshot.total_memory_mib)
-    settings = _configure_deterministic_restart(torch_module)
+    settings = _configure_deterministic_restart(
+        torch_module, cublas_workspace_config=cublas_workspace_config
+    )
     random.seed(STREAM_SEED)
     try:
         numpy = importlib.import_module("numpy")
@@ -1356,6 +1378,7 @@ def _restart_worker(plan_path: Path, phase: str) -> dict[str, object]:
     if scratch_root != SCRATCH_ROOT or output_root != OUTPUT_ROOT:
         raise ScalabilityValidationError("restart worker storage roots are pinned")
     _require_gpu_environment()
+    cublas_workspace_config = _require_cublas_workspace_config()
     require_storage_layout(scratch_root, output_root)
     lock = BenchmarkLock(lock_path)
     lock.acquire()
@@ -1370,6 +1393,7 @@ def _restart_worker(plan_path: Path, phase: str) -> dict[str, object]:
             scratch_root=scratch_root,
             output_root=output_root,
             lock_path=lock_path,
+            cublas_workspace_config=cublas_workspace_config,
         )
         cuda_context_ready = True
         model, optimizer, parameter_count = _create_model_and_optimizer(torch_module)
@@ -1396,6 +1420,7 @@ def _restart_worker(plan_path: Path, phase: str) -> dict[str, object]:
             gpu_identity=gpu_identity,
             stream_hash=stream.sha256,
             deterministic_settings=deterministic,
+            cublas_workspace_config=cublas_workspace_config,
             attention_backend=attention,
         )
         expected_identity = plan.get("expected_identity")
@@ -1610,6 +1635,7 @@ def run_restart_check(
     """Run reference, save, and resume phases in three sequential fresh processes."""
 
     _require_gpu_environment()
+    cublas_workspace_config = _require_cublas_workspace_config()
     validate_suite_id(suite_id)
     require_storage_layout(scratch_root, output_root)
     suite_directory = suite_path(suite_id, scratch_root)
@@ -1670,8 +1696,10 @@ def run_restart_check(
                 "cuda_matmul_allow_tf32": False,
                 "attention_backend": "auto",
                 "backend_fallback_or_switch": False,
+                "effective_cublas_workspace_config": cublas_workspace_config,
             },
         },
+        "effective_cublas_workspace_config": cublas_workspace_config,
         "phases": phases,
         "comparison": phases[-1]
         if phases and phases[-1].get("phase") == "resume"
@@ -1928,7 +1956,8 @@ def dry_run_plan(suite_id: str) -> dict[str, object]:
             f"--suite-id {suite_id} --execute"
         ),
         "restart_command": (
-            "CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src /srv/cambacica-c3/venv/bin/python "
+            "CUDA_VISIBLE_DEVICES=0 CUBLAS_WORKSPACE_CONFIG=:4096:8 "
+            "PYTHONPATH=src /srv/cambacica-c3/venv/bin/python "
             "-m cambacica.benchmark.scalability_cli restart-check "
             f"--suite-id {suite_id} --execute"
         ),
