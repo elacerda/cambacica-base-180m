@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from cambacica.benchmark.config import HARD_GPU_MEMORY_BUDGET_MIB, BenchmarkConfig
+from cambacica.hardware import ORION_GPU0_UUID
 
-EXPECTED_GPU_UUID = "GPU-7562e34d-b0a2-a725-2ad5-ed1327be3cb0"
+EXPECTED_GPU_UUID = ORION_GPU0_UUID
 MIB = 1024 * 1024
 
 

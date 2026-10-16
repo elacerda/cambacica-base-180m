@@ -1,0 +1,153 @@
+{
+  "schema_version": "cambacica-training-baseline-v1",
+  "baseline_id": "c3.6-architecture-c-v1",
+  "status": "baseline-approved-scalability-validation-pending",
+  "scientist_approved": {
+    "architecture_id": "C",
+    "context_length_tokens": 4096,
+    "embedding_output_weight_tying": true,
+    "parameter_count": 176180224,
+    "reference_compute_precision": "bf16",
+    "target_hardware": {
+      "site": "Orion",
+      "hostname": "cenpesor",
+      "physical_gpu_index": 0,
+      "gpu_uuid": "GPU-7562e34d-b0a2-a725-2ad5-ed1327be3cb0"
+    }
+  },
+  "frozen_inputs": {
+    "architecture": {
+      "architecture_id": "C",
+      "name": "wide-shallow",
+      "hidden_size": 1024,
+      "num_layers": 9,
+      "num_attention_heads": 16,
+      "head_dim": 64,
+      "intermediate_size": 4096,
+      "vocab_size": 24576,
+      "parameters_tied": 176180224,
+      "parameters_untied": 201346048
+    },
+    "tokenizer_identity": {
+      "candidate": "unigram-v24576",
+      "algorithm": "SentencePiece Unigram",
+      "vocab_size": 24576,
+      "sentencepiece_version": "0.2.2",
+      "model_sha256": "c8982a23d3c5ecc0a61d300edc1e354e38f1358aa3db5420d5bf19f7b95cbf23",
+      "vocab_sha256": "f27e38de1a1e0e2e96ac00f50382d1be749d2b357cb3e8ad9ee43bf8ae972d9f",
+      "special_token_ids": {
+        "unk": 0,
+        "bos": 1,
+        "eos": 2
+      },
+      "pad_id": -1,
+      "byte_fallback_pieces": 256
+    }
+  },
+  "measured_baseline_choices": {
+    "source": "C3.4 synthetic benchmark, Architecture C, context 4096",
+    "microbatch_size": 1,
+    "compute_precision": "bf16_autocast",
+    "parameter_storage_dtype": "float32",
+    "gradient_dtype": "float32",
+    "optimizer_fixture": {
+      "name": "AdamW",
+      "learning_rate": 0.0001,
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "weight_decay": 0.1,
+      "epsilon": 1e-8,
+      "scope": "synthetic benchmark step only; not a training decision"
+    },
+    "activation_checkpointing": "none",
+    "warmup_updates": 20,
+    "timed_updates": 100,
+    "seed": 20261017,
+    "attention_backend": "auto"
+  },
+  "provisional_hyperparameters": {
+    "status": "none_selected",
+    "values": {}
+  },
+  "scalability_validation_proposal": {
+    "status": "proposed-for-subsequent-scientist-authorization",
+    "context_length_tokens": 4096,
+    "microbatch_sizes": [
+      1,
+      2,
+      4
+    ],
+    "gradient_accumulation_steps": [
+      1,
+      2,
+      4
+    ],
+    "optimizer_updates_per_cell": {
+      "warmup": 5,
+      "measured": 20,
+      "repeats": 1
+    },
+    "cells": [
+      {
+        "microbatch_size": 1,
+        "gradient_accumulation_steps": 1,
+        "tokens_per_update": 4096
+      },
+      {
+        "microbatch_size": 1,
+        "gradient_accumulation_steps": 2,
+        "tokens_per_update": 8192
+      },
+      {
+        "microbatch_size": 1,
+        "gradient_accumulation_steps": 4,
+        "tokens_per_update": 16384
+      },
+      {
+        "microbatch_size": 2,
+        "gradient_accumulation_steps": 1,
+        "tokens_per_update": 8192
+      },
+      {
+        "microbatch_size": 2,
+        "gradient_accumulation_steps": 2,
+        "tokens_per_update": 16384
+      },
+      {
+        "microbatch_size": 2,
+        "gradient_accumulation_steps": 4,
+        "tokens_per_update": 32768
+      },
+      {
+        "microbatch_size": 4,
+        "gradient_accumulation_steps": 1,
+        "tokens_per_update": 16384
+      },
+      {
+        "microbatch_size": 4,
+        "gradient_accumulation_steps": 2,
+        "tokens_per_update": 32768
+      },
+      {
+        "microbatch_size": 4,
+        "gradient_accumulation_steps": 4,
+        "tokens_per_update": 65536
+      }
+    ]
+  },
+  "unresolved_training_decisions": [
+    "optimizer algorithm and final optimizer hyperparameters",
+    "learning-rate schedule and warmup",
+    "microbatch size, gradient accumulation, and effective batch",
+    "total training-token budget",
+    "activation-checkpointing policy",
+    "parameter, gradient, and optimizer-state storage dtypes for the training implementation",
+    "optimizer-state layout and any master weights",
+    "checkpoint cadence and retention policy",
+    "final corpus mixture and C1 source-rights/usage-policy resolution",
+    "C4 packing implementation and measured token occupancy at context 4096",
+    "C3.7 quality-pilot authorization and token count"
+  ]
+}

@@ -7,6 +7,11 @@ not run any benchmark command — including re-runs of the six primary
 combinations or the 8,192 capacity probe — without a new explicit scientist
 authorization.
 
+The separate C3.6 scalability proposal is documented in
+[`C3_TRAINING_BASELINE_V1.md`](C3_TRAINING_BASELINE_V1.md). That proposal is
+not execution authorization; its GPU matrix and restart checks need a new
+explicit scientist authorization.
+
 Run the commands in a foreground shell on `cenpesor`. Do not use GPU 1, a
 tmux session, a detached process, a production corpus, or a learning pilot.
 The commands explicitly select `CUDA_VISIBLE_DEVICES=0`, tied mode, BF16,

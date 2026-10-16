@@ -154,11 +154,18 @@ linguística. As Arquiteturas A e B permanecem preservadas como
 configurações experimentais de comparação. Registro completo em
 [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
 
-Continuam indecididos: contexto final, tying, optimizer e schedule, batch
-efetivo, orçamento de tokens, mistura final A/B/C e
-autorização/tamanho de qualquer piloto de qualidade (C3.7). A próxima etapa
-é a C3.6 — configuração de treinamento e validação de escalabilidade —,
-com plano no registro de seleção.
+Em C3.6, o cientista aprovou contexto 4.096, tying, 176.180.224 parâmetros,
+BF16 como precisão computacional de referência e Orion GPU física 0. O
+baseline versionado e sua validação ficam em
+[`C3_TRAINING_BASELINE_V1.md`](C3_TRAINING_BASELINE_V1.md). A matriz de
+microbatch/acumulação e os protocolos de memória e restart estão propostos,
+mas ainda não foram executados.
+
+Continuam indecididos: optimizer e schedule, batch efetivo, orçamento de
+tokens, política de activation checkpointing, mistura final A/B/C,
+armazenamento dos estados do modelo/optimizer, e autorização/tamanho de
+qualquer piloto de qualidade (C3.7). A validação de escalabilidade C3.6 ainda
+requer autorização explícita para executar na GPU.
 
 Consulte [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md),
 [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md),
@@ -166,11 +173,12 @@ Consulte [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md),
 [`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md) e
 [`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md).
 
-Status: **IN PROGRESS — Arquitetura C APPROVED (matriz C3.4 completa); próxima etapa C3.6: configuração de treinamento e validação de escalabilidade**
+Status: **IN PROGRESS — Arquitetura C e baseline C3.6 aprovados; validação de escalabilidade pendente**
 
-C3 só poderá ser marcado **COMPLETE** depois que o cientista revisar e
-aprovar a configuração de treinamento e os resultados da etapa C3.6. A
-decisão de arquitetura não congela a receita de treinamento.
+C3 só poderá ser marcado **COMPLETE** depois que a matriz e o protocolo de
+checkpoint/restart C3.6 forem executados sob autorização e o cientista revisar
+os resultados. O baseline aprovado não congela a receita completa de
+treinamento.
 
 ## C4 — Pipeline de dados e treinamento
 

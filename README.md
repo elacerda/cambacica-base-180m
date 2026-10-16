@@ -42,13 +42,19 @@ C1-S1](docs/C1_SPLIT_AND_MIXTURE_READINESS.md).
 
 C3 aprovou a **Arquitetura C (wide/shallow)** em 2026-10-16: 9 camadas,
 hidden 1.024, 16 cabeças (head dim 64), SwiGLU 4.096, vocabulário 24.576,
-RMSNorm, RoPE e atenção causal SDPA (176.180.224 parâmetros com tying). A
-decisão baseou-se na matriz de benchmark sintético C3.4 executada na Orion
-(seis execuções completas, commit `f73d885`), escolhendo por eficiência
-computacional medida, **não** por qualidade de linguagem demonstrada.
-Context length, tying, optimizer, batch efetivo, orçamento final de tokens,
-mistura do corpus e autorização de piloto de qualidade continuam sem
-decisão. Consulte o [registro de seleção](docs/C3_ARCHITECTURE_SELECTION_V1.md),
+RMSNorm, RoPE e atenção causal SDPA. A matriz sintética C3.4 na Orion mediu
+eficiência computacional, **não** qualidade de linguagem. Em C3.6, o cientista
+aprovou o baseline versionado com contexto de 4.096 tokens, embeddings/output
+amarrados, 176.180.224 parâmetros, BF16 como precisão de referência e somente
+a GPU física 0 da Orion. A identidade SentencePiece Unigram 24.576 permanece
+congelada por C2. Consulte o [baseline C3.6](docs/C3_TRAINING_BASELINE_V1.md)
+e o [registro de seleção C3.5](docs/C3_ARCHITECTURE_SELECTION_V1.md).
+
+O baseline não escolhe optimizer, schedule de learning rate, batch efetivo,
+acumulação de gradientes, orçamento de tokens ou política de activation
+checkpointing. A matriz de escalabilidade em contexto 4.096 está proposta,
+mas ainda não foi executada. A mistura final do corpus, a autorização de
+piloto de qualidade e outras decisões abertas permanecem sem decisão. Consulte
 o [plano](docs/C3_ARCHITECTURE_PLANNING.md), a
 [implementação](docs/C3_ARCHITECTURE_IMPLEMENTATION.md), a
 [metodologia do benchmark](docs/C3_BENCHMARK_METHODOLOGY.md) e o
