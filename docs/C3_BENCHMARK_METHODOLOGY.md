@@ -3,7 +3,10 @@
 **Purpose:** compare implementation throughput and memory for the three C3
 model shapes at contexts 2,048 and 4,096. These are six synthetic performance
 measurements. They do not estimate learning quality or authorize a training
-recipe. No benchmark was executed while implementing this framework.
+recipe. No benchmark was executed while implementing this framework; the
+six-run primary matrix (C3.4) was executed on Orion GPU 0 on 2026-10-16, and
+its results and the architecture decision are recorded in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
 
 ## Primary matrix
 
@@ -12,6 +15,10 @@ recipe. No benchmark was executed while implementing this framework.
 | A — narrow/deep | One benchmark | One benchmark |
 | B — balanced | One benchmark | One benchmark |
 | C — wide/shallow | One benchmark | One benchmark |
+
+All six cells were executed once on 2026-10-16 on Orion GPU 0; run IDs,
+measurements, and artifact checksums are in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
 
 The default run uses BF16 autocast when GPU 0 supports it, microbatch 1, 20
 warm-up steps, 100 timed steps, seed `20261017`, automatic PyTorch SDPA backend

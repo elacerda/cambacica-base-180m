@@ -121,13 +121,20 @@ APPROVED / VERIFIED**.
 **Objetivo:** escolher a arquitetura final dentro da faixa de 150–200M.
 
 As três propostas A/B/C têm implementação PyTorch e contagem analítica de
-parâmetros; o framework de benchmark sintético cobre os seis pares de
-arquitetura/contexto (2.048 e 4.096). A validação local limitada passou para
-contabilidade, configuração, política de GPU mockada, métricas e artefatos.
-Testes que dependem de PyTorch foram ignorados porque o pacote opcional não
-está instalado neste ambiente. Resultado local: `pytest` 289 passed / 9
-skipped; `ruff check .` passou. Nenhum CUDA/GPU, benchmark, corpus de produção
-ou piloto de qualidade foi executado.
+parâmetros. A validação local limitada passou para contabilidade,
+configuração, política de GPU mockada, métricas e artefatos; testes que
+dependem de PyTorch foram ignorados porque o pacote opcional não está
+instalado neste ambiente. Resultado local verificado em 2026-10-16: `pytest`
+345 passed / 9 skipped; `ruff check .` reportou apenas 2 E402 preexistentes
+em `tests/model/test_transformer.py`, fora do escopo desta etapa.
+
+A matriz C3.4 de seis benchmarks sintéticos foi executada na Orion
+(`cenpesor`, GPU física 0) em 2026-10-16, sob autorização do cientista:
+todos os seis pares arquitetura/contexto (A/B/C × 2.048/4.096) terminaram
+completos, sem violação de política de memória, no commit
+`f73d885a5dad7f6d7294c48e3027d85d8dfd26b1` (árvore limpa). Os artefatos
+permanecem em `/mnt/data/cambacica-base-180m/c3-benchmarks/` com checksums
+verificados. Nenhum corpus de produção ou piloto de qualidade foi executado.
 
 O manual fixa GPU física 0 de `cenpesor`, UUID
 `GPU-7562e34d-b0a2-a725-2ad5-ed1327be3cb0`, orçamento operacional máximo de
@@ -135,20 +142,35 @@ O manual fixa GPU física 0 de `cenpesor`, UUID
 fora do escopo. Limitações do allocator PyTorch e monitoramento NVML estão
 registradas no método e runbook.
 
-Continuam indecididos: arquitetura A/B/C, contexto final, tying, optimizer e
-schedule, batch efetivo, orçamento de tokens, mistura final A/B/C e
-autorização/tamanho de qualquer piloto de qualidade.
+**Decisão C3.5 — APPROVED (2026-10-16):** o cientista aprovou a
+**Arquitetura C (wide/shallow)** — 9 camadas, hidden 1.024, 16 cabeças
+(head dim 64), SwiGLU 4.096, vocabulário 24.576, RMSNorm, RoPE e atenção
+causal SDPA; 176.180.224 parâmetros com tying (201.346.048 sem tying). A
+seleção é baseada em eficiência computacional medida na matriz C3.4 (melhor
+throughput e menor pico de memória nos dois contextos comparados), **não**
+em qualidade de linguagem demonstrada: as perdas do benchmark são calculadas
+sobre IDs sintéticos e não podem ser interpretadas como qualidade
+linguística. As Arquiteturas A e B permanecem preservadas como
+configurações experimentais de comparação. Registro completo em
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
 
-Consulte [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md),
+Continuam indecididos: contexto final, tying, optimizer e schedule, batch
+efetivo, orçamento de tokens, mistura final A/B/C e
+autorização/tamanho de qualquer piloto de qualidade (C3.7). A próxima etapa
+é a C3.6 — configuração de treinamento e validação de escalabilidade —,
+com plano no registro de seleção.
+
+Consulte [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md),
+[`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md),
 [`C3_ARCHITECTURE_IMPLEMENTATION.md`](C3_ARCHITECTURE_IMPLEMENTATION.md),
 [`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md) e
 [`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md).
 
-Status: **IN PROGRESS — bounded CPU implementation checks complete; scientist review and GPU benchmark pending**
+Status: **IN PROGRESS — Arquitetura C APPROVED (matriz C3.4 completa); próxima etapa C3.6: configuração de treinamento e validação de escalabilidade**
 
-C3 só poderá ser marcado **COMPLETE** depois que o cientista revisar e aprovar
-os resultados experimentais. A implementação não congela a arquitetura ou a
-receita de treinamento.
+C3 só poderá ser marcado **COMPLETE** depois que o cientista revisar e
+aprovar a configuração de treinamento e os resultados da etapa C3.6. A
+decisão de arquitetura não congela a receita de treinamento.
 
 ## C4 — Pipeline de dados e treinamento
 

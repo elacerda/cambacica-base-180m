@@ -41,7 +41,12 @@ O primeiro Cambacica será:
 - treinado do zero;
 - modelo base, não instruct/chat.
 
-A arquitetura exata ainda não está definida.
+A arquitetura foi aprovada pelo cientista em 2026-10-16: **Arquitetura C
+(wide/shallow)** — 9 camadas, hidden 1.024, 16 cabeças (head dim 64), SwiGLU
+4.096, vocabulário 24.576, RMSNorm, RoPE e atenção causal SDPA
+(176.180.224 parâmetros com tying). Registro:
+[`docs/C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
+Contexto final, tying e receita de treinamento continuam abertos.
 
 ## Infraestrutura-alvo
 

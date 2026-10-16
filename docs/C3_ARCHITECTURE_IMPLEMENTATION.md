@@ -1,8 +1,11 @@
 # C3 architecture implementation
 
-**Status: implementation prepared; C3 remains IN PROGRESS.** No GPU benchmark,
-training pilot, corpus job, or architecture selection was performed by this
-implementation. The three documented shapes remain scientific candidates.
+**Status: implementation prepared; Architecture C selected, 2026-10-16.**
+This implementation performed no architecture selection. The scientist
+approved **Architecture C (wide/shallow)** based on the C3.4 benchmark
+matrix; the decision record is in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
+Proposals A and B are preserved as experimental comparison configurations.
 
 The PyTorch implementation is in `src/cambacica/model/`. It is a decoder-only
 causal Transformer with pre-norm RMSNorm, full multi-head causal attention,
@@ -73,8 +76,10 @@ tests still run.
 
 ## Explicitly open decisions
 
-No architecture, context length, weight-tying policy, optimizer or learning
-rate schedule, effective batch, training-token budget, final corpus mixture
-A/B/C, or learning-quality pilot authorization is selected here. The
+No context length, weight-tying policy, optimizer or learning rate schedule,
+effective batch, training-token budget, final corpus mixture A/B/C, or
+learning-quality pilot authorization is selected here. The architecture was
+selected separately in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md). The
 `unigram-v24576` tokenizer remains frozen at the C2 SHA-256 recorded in its
 decision document. C3 does not read or modify tokenizer or corpus artifacts.

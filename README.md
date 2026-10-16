@@ -40,11 +40,16 @@ somente a referência provisória para amostragem do tokenizer. Consulte os
 [gates do projeto](docs/GATES.md) e o [estado e identidades do split
 C1-S1](docs/C1_SPLIT_AND_MIXTURE_READINESS.md).
 
-C3 tem implementação do modelo e framework de benchmark sintético preparados;
-nenhum benchmark de GPU foi executado e nenhuma arquitetura foi selecionada.
-Arquitetura, context length, tying, optimizer, batch efetivo, orçamento final
-de tokens, mistura do corpus e autorização de piloto de qualidade continuam
-sem decisão. Consulte o [plano](docs/C3_ARCHITECTURE_PLANNING.md), a
+C3 aprovou a **Arquitetura C (wide/shallow)** em 2026-10-16: 9 camadas,
+hidden 1.024, 16 cabeças (head dim 64), SwiGLU 4.096, vocabulário 24.576,
+RMSNorm, RoPE e atenção causal SDPA (176.180.224 parâmetros com tying). A
+decisão baseou-se na matriz de benchmark sintético C3.4 executada na Orion
+(seis execuções completas, commit `f73d885`), escolhendo por eficiência
+computacional medida, **não** por qualidade de linguagem demonstrada.
+Context length, tying, optimizer, batch efetivo, orçamento final de tokens,
+mistura do corpus e autorização de piloto de qualidade continuam sem
+decisão. Consulte o [registro de seleção](docs/C3_ARCHITECTURE_SELECTION_V1.md),
+o [plano](docs/C3_ARCHITECTURE_PLANNING.md), a
 [implementação](docs/C3_ARCHITECTURE_IMPLEMENTATION.md), a
 [metodologia do benchmark](docs/C3_BENCHMARK_METHODOLOGY.md) e o
 [runbook manual para Orion](docs/C3_BENCHMARK_RUNBOOK.md).

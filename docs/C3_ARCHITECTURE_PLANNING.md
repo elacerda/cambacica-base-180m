@@ -1,12 +1,16 @@
 # C3 architecture-planning handoff
 
-**Status: implementation prepared, 2026-10-15.** C2 has frozen SentencePiece
-Unigram 24,576; C3 has not selected an architecture or context length. The
-implementation and benchmark handoff are in
+**Status: Architecture C selected, 2026-10-16.** C2 has frozen SentencePiece
+Unigram 24,576. The scientist approved **Architecture C (wide/shallow)** as
+the C3 architecture on measured C3.4 benchmark efficiency; the immutable
+decision record is in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md). The
+final context length remains open. The implementation and benchmark handoff
+are in
 [`C3_ARCHITECTURE_IMPLEMENTATION.md`](C3_ARCHITECTURE_IMPLEMENTATION.md),
 [`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md), and
-[`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md). No GPU benchmark or
-learning-quality pilot has been run.
+[`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md). No learning-quality
+pilot has been run.
 
 The target remains a decoder-only causal base language model with a nominal
 scale of approximately 180M parameters. The selected tokenizer is
@@ -45,7 +49,10 @@ proposals reach roughly 198.2–201.3M because a second vocabulary matrix adds
 18.9–25.2M parameters. **Embedding/output-weight tying remains an explicit
 architecture decision for the scientist.** The tied totals are a comparison
 case, not an approved architecture. Proposal A spends capacity on depth,
-proposal C on width, and proposal B sits between them.
+proposal C on width, and proposal B sits between them. **Proposal C is the
+scientist-approved C3 architecture (2026-10-16, recorded in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md));
+proposals A and B are preserved as experimental comparison configurations.**
 
 Contexts 2,048 and 4,096 are proposed comparison points. An 8,192-token
 capacity probe may be added only after a short memory check at 4,096; it is not
@@ -142,11 +149,10 @@ generation speed.
 
 ## Decisions still open
 
-- Tied or untied embeddings/output weights and the final width/depth/head/FFN
-  shape.
+- Tied or untied embeddings/output weights (the width/depth/head/FFN shape
+  is resolved: Architecture C).
 - Final context length and document-packing accounting for byte-fallback
   structural characters.
-- Free memory available on GPU 0 when each benchmark starts.
 - Precision, attention implementation, activation checkpointing, optimizer,
   microbatch/effective batch, and learning-rate schedule.
 - Whether to authorize the equal-token C3 learning pilot and its separate
@@ -154,7 +160,7 @@ generation speed.
 - Source usage/rights resolution and final corpus mixture A/B/C. Mixture B is
   still only the provisional tokenizer-sampling reference.
 
-The C3 model and synthetic benchmark framework are implemented. No GPU
-benchmark, production job, learning-quality pilot, final training optimizer,
-token budget, or corpus mixture has been executed or frozen by this planning
-handoff.
+The C3 model and synthetic benchmark framework are implemented, and the
+six-run C3.4 benchmark matrix was executed on Orion GPU 0 on 2026-10-16. No
+learning-quality pilot, final training optimizer, token budget, or corpus
+mixture has been executed or frozen by this planning handoff.

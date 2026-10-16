@@ -1,8 +1,11 @@
 # C3 manual benchmark runbook — Orion
 
-**Implementation only; do not run these commands until the scientist has
-reviewed the implementation and authorized the GPU measurements.** The
-implementation task did not initialize CUDA or run any benchmark.
+**The six primary commands below were executed on Orion GPU 0 on 2026-10-16
+under scientist authorization; results are recorded in
+[`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).** Do
+not run any benchmark command — including re-runs of the six primary
+combinations or the 8,192 capacity probe — without a new explicit scientist
+authorization.
 
 Run the commands in a foreground shell on `cenpesor`. Do not use GPU 1, a
 tmux session, a detached process, a production corpus, or a learning pilot.
