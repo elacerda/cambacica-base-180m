@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import ctypes
 import fcntl
 import os
-from pathlib import Path
 import re
-from typing import Any
 import uuid as uuidlib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
-from cambacica.benchmark.config import BenchmarkConfig, HARD_GPU_MEMORY_BUDGET_MIB
+from cambacica.benchmark.config import HARD_GPU_MEMORY_BUDGET_MIB, BenchmarkConfig
 
 EXPECTED_GPU_UUID = "GPU-7562e34d-b0a2-a725-2ad5-ed1327be3cb0"
 MIB = 1024 * 1024
@@ -41,9 +42,7 @@ def _normalise_gpu_uuid(value: Any) -> str:
         raw = _decode(value).strip().lower()
     if raw.startswith("mig-"):
         return raw
-    if raw.startswith("gpu-"):
-        raw = raw[4:]
-    return raw
+    return raw.removeprefix("gpu-")
 
 
 def _memory_mib(value: Any) -> int | None:
@@ -59,27 +58,75 @@ def _normalise_pci_bus_id(value: Any) -> str | None:
     if value is None:
         return None
     raw = _decode(value).strip().lower()
-    match = re.fullmatch(r"(?:0x)?([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)\.([0-9a-f]+)", raw)
+    match = re.fullmatch(
+        r"(?:0x)?([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)\.([0-9a-f]+)", raw
+    )
     if match is None:
-        return raw
+        raise GpuSafetyError(f"invalid PCI bus ID: {raw!r}")
     domain, bus, device, function = (int(part, 16) for part in match.groups())
+    if domain > 0xFFFFFFFF or bus > 0xFF or device > 0x1F or function > 7:
+        raise GpuSafetyError(f"invalid PCI bus ID: {raw!r}")
     return f"{domain:x}:{bus:02x}:{device:02x}.{function:x}"
 
 
 def _cuda_pci_bus_id(properties: Any) -> str | None:
     bus_id = getattr(properties, "pci_bus_id", getattr(properties, "pciBusId", None))
-    if isinstance(bus_id, str) and ":" in bus_id and "." in bus_id:
+    if isinstance(bus_id, (str, bytes)) and not bus_id.isdigit():
         return _normalise_pci_bus_id(bus_id)
     if bus_id is None:
         return None
     try:
         bus = int(bus_id)
-        device = int(getattr(properties, "pci_device_id"))
+        device = int(properties.pci_device_id)
         domain = int(getattr(properties, "pci_domain_id", 0))
         function = int(getattr(properties, "pci_function_id", 0))
-    except (AttributeError, TypeError, ValueError):
-        return None
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise GpuSafetyError("invalid PyTorch PCI bus ID properties") from exc
     return _normalise_pci_bus_id(f"{domain:x}:{bus:x}:{device:x}.{function:x}")
+
+
+def _cuda_driver_pci_bus_id() -> str:
+    """Identify CUDA-visible logical device 0 without creating a CUDA context."""
+
+    try:
+        driver = ctypes.CDLL("libcuda.so.1")
+        cu_init = driver.cuInit
+        cu_init.argtypes = [ctypes.c_uint]
+        cu_init.restype = ctypes.c_int
+        cu_device_get = driver.cuDeviceGet
+        cu_device_get.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+        cu_device_get.restype = ctypes.c_int
+        cu_device_get_pci = driver.cuDeviceGetPCIBusId
+        cu_device_get_pci.argtypes = [
+            ctypes.POINTER(ctypes.c_char),
+            ctypes.c_int,
+            ctypes.c_int,
+        ]
+        cu_device_get_pci.restype = ctypes.c_int
+
+        status = cu_init(0)
+        if status != 0:
+            raise GpuSafetyError(f"CUDA Driver API cuInit failed: {status}")
+        device = ctypes.c_int(-1)
+        status = cu_device_get(ctypes.byref(device), 0)
+        if status != 0 or device.value < 0:
+            raise GpuSafetyError(f"CUDA Driver API cuDeviceGet failed: {status}")
+        bus_id = ctypes.create_string_buffer(32)
+        status = cu_device_get_pci(bus_id, len(bus_id), device.value)
+        if status != 0:
+            raise GpuSafetyError(
+                f"CUDA Driver API cuDeviceGetPCIBusId failed: {status}"
+            )
+        if b"\0" not in bus_id.raw:
+            raise GpuSafetyError("CUDA Driver API returned an unterminated PCI bus ID")
+        pci_bus_id = _normalise_pci_bus_id(bus_id.value)
+        if pci_bus_id is None:
+            raise GpuSafetyError("CUDA Driver API returned no PCI bus ID")
+        return pci_bus_id
+    except GpuSafetyError:
+        raise
+    except Exception as exc:
+        raise GpuSafetyError(f"CUDA Driver API PCI bus ID query failed: {exc}") from exc
 
 
 def _nvml_processes(nvml: Any, handle: Any) -> list[dict[str, int | None]]:
@@ -97,9 +144,7 @@ def _nvml_processes(nvml: Any, handle: Any) -> list[dict[str, int | None]]:
         result.append(
             {
                 "pid": int(process.pid),
-                "used_memory_mib": _memory_mib(
-                    getattr(process, "usedGpuMemory", None)
-                ),
+                "used_memory_mib": _memory_mib(getattr(process, "usedGpuMemory", None)),
             }
         )
     return sorted(result, key=lambda item: item["pid"] or -1)
@@ -140,7 +185,7 @@ class BenchmarkLock:
         self.path = path
         self._stream = None
 
-    def acquire(self) -> "BenchmarkLock":
+    def acquire(self) -> BenchmarkLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._stream = self.path.open("a+")
         try:
@@ -163,7 +208,7 @@ class BenchmarkLock:
             self._stream.close()
             self._stream = None
 
-    def __enter__(self) -> "BenchmarkLock":
+    def __enter__(self) -> BenchmarkLock:  # noqa: PYI034 - Python 3.10 has no typing.Self
         return self.acquire()
 
     def __exit__(self, *_exc: object) -> None:
@@ -225,6 +270,12 @@ def preflight_gpu(
                     "visible cuda:0 PCI bus ID does not match physical GPU 0"
                 )
             mapping_method = "pci_bus_id"
+        elif visible_pci is None and pci_bus_id is not None:
+            if _cuda_driver_pci_bus_id() != pci_bus_id:
+                raise GpuSafetyError(
+                    "CUDA Driver API cuda:0 PCI bus ID does not match physical GPU 0"
+                )
+            mapping_method = "cuda_driver_pci_bus_id"
         else:
             raise GpuSafetyError(
                 "CUDA-to-NVML device mapping cannot be established reliably"
@@ -291,7 +342,9 @@ class GpuSafetyMonitor:
         except GpuSafetyError:
             raise
         except Exception as exc:
-            raise GpuSafetyError(f"runtime NVML memory monitoring failed: {exc}") from exc
+            raise GpuSafetyError(
+                f"runtime NVML memory monitoring failed: {exc}"
+            ) from exc
         if free_mib is None:
             raise GpuSafetyError("runtime NVML free-memory reading is unavailable")
         current = next((row for row in processes if row["pid"] == self.pid), None)
@@ -328,7 +381,9 @@ class GpuSafetyMonitor:
         return self.last_sample
 
 
-def apply_allocator_limit(torch_module: Any, config: BenchmarkConfig, total_memory_mib: int) -> float:
+def apply_allocator_limit(
+    torch_module: Any, config: BenchmarkConfig, total_memory_mib: int
+) -> float:
     """Cap the PyTorch caching allocator below the total-process peak target."""
 
     config.validate()
