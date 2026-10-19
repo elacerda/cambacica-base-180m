@@ -197,7 +197,21 @@ IN PROGRESS, e C4 continua PENDING até seu próprio planejamento e aprovação.
 **Objetivo:** validar packing, batching, checkpointing, retomada, logs e
 reprodutibilidade.
 
-Status: **PENDING**
+**Planejamento C4-P autorizado em 2026-10-19.** Contrato preliminar
+versionado em [`C4_PIPELINE_DESIGN_PROPOSAL_V1.md`](C4_PIPELINE_DESIGN_PROPOSAL_V1.md).
+O documento diferencia decisões herdadas C1/C2/C3, alternativas de packing
+e fronteiras documentais, política de EOS/BOS/padding/loss, isolamento dos
+splits, amostragem/quotas, armazenamento local, estado completo de
+checkpoint e critérios de aprovação. Nenhuma política nova de packing,
+mistura, batch, optimizer, schedule ou token budget foi aprovada.
+
+Autorização atual: **documentação e planejamento apenas**. Preparação
+CPU com textos sintéticos e qualquer implementação dependem de revisão do
+desenho; processamento de corpus real, execução GPU, piloto C3.7,
+smoke training C5 e pretraining C6 seguem sem autorização.
+Direitos e política de uso/mistura C1 continuam pendentes.
+
+Status: **IN PROGRESS — PLANNING ONLY**
 
 ## C5 — Smoke training
 
