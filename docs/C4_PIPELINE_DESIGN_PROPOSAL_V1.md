@@ -1,6 +1,6 @@
 # C4 — Data pipeline and training-system design proposal v1
 
-**Status: DESIGN IN PROGRESS / P1 AND INITIAL C4-P1.1 SEQUENCE/LOSS POLICY APPROVED (2026-10-19).**
+**Status: DESIGN IN PROGRESS / P1.2 CPU PASS / P1.3 STREAMING PLAN PROPOSED (2026-10-19).**
 
 This document is a **planning artifact**, not a frozen C4 policy,
 authorization to process real corpus text, or authorization to train.
@@ -43,16 +43,23 @@ follow-up authorization does not permit C1 production corpus reads,
 real document tokenization, token shard materialization, GPU workloads,
 or training. Other C4-D production components remain unauthorized.
 
-The bounded reference and focused tests are implemented at
-`src/cambacica/packing/p1_reference.py` and
-`tests/packing/test_p1_reference.py`. The focused suite passed 24/24;
-the full available CPU suite passed 379 tests with 10 documented skips.
-This closes only the synthetic P1 reference task. **Initial BOS-per-document,
-EOS scoring and label masking policy C4-P1.1 is now approved** in
+The pure-Python P1 reference is in `src/cambacica/packing/p1_reference.py`;
+its 24 focused tests previously passed. **C4-P1.1 initial EOS/BOS/loss
+policy is scientist-approved**, as recorded in
 [C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md).
-Epoch/reset BOS, tokenizer-special-token integration, sampling,
-mixture weights and final batch remain open; the reference does not
-authorize a production pipeline or model integration testing.
+**C4-P1.2 synthetic CPU loss integration is COMPLETE / PASS**:
+51 focused tests passed after formatting, with an earlier complete
+CPU suite of 425 passed / five skipped, documented in
+[C4_P1_2_CPU_LOSS_INTEGRATION_V1.md](C4_P1_2_CPU_LOSS_INTEGRATION_V1.md).
+This remains a bounded synthetic probe, not production model training.
+
+**C4-P1.3 deterministic streaming/sampling design has been proposed
+for scientist review** in
+[C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md](C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md).
+Its recommended external hash ordering and acknowledged cursor remain
+**OPEN**, and implementation/tests of a streaming producer have **not**
+been authorized. Epoch/reset BOS, source sampling, C1 mixture, quotas,
+data-loader checkpoint coupling and final batch remain undecided.
 
 1. Produce versioned **data interface contracts** for
    `document -> tokenized document -> sequence -> training batch`. Every
@@ -214,8 +221,8 @@ or data-loader implementations without measurement.
 | Decision | Current status | Evidence/requirement before approval |
 | --- | --- | --- |
 | Packing P1/P2/P3; attention across documents | **P1 APPROVED** | Contiguous EOS stream, causal cross-document attention allowed; low-level semantics remain to review |
-| Initial BOS/EOS and loss/padding/mask semantics | **C4-P1.1 APPROVED** | No per-document BOS; score EOS and cross-document targets; labels `-100` for pad; future CPU PyTorch integration untested |
-| 4,096 input/label alignment, tail/overlap | **P1.1 POLICY APPROVED; REFERENCE TESTED** | 4,097 backing / 4,096 stride; pending CPU-model loss integration and production stream verification |
+| Initial BOS/EOS and loss/padding/mask semantics | **C4-P1.1 APPROVED; C4-P1.2 CPU PASS** | No per-document BOS; score EOS and cross-document targets; labels `-100` for pad; bounded synthetic model integration verified |
+| 4,096 input/label alignment, tail/overlap | **P1.1 POLICY APPROVED; REFERENCE TESTED** | 4,097 backing / 4,096 stride; CPU-model loss integration passed; streaming verification not yet run |
 | Mixture A/B/C and source quotas | BLOCKED BY C1 | Final rights/use policy and mixture-selection gate |
 | Mixture weights expressed in actual model tokens | OPEN | Distinguish from C1 normalized-word shares |
 | Training microbatch/accumulation | OPEN | 4×1 engineering candidate only |
@@ -224,7 +231,8 @@ or data-loader implementations without measurement.
 | Parameter/state precision and activation checkpoint | OPEN | Future training proposal and measured memory |
 | Checkpoint cadence, persistence and retention | OPEN | Local ext4 capacity and recovery requirements |
 | GPU training/pilot authorization | NOT GRANTED | Separate explicit scientist approval |
-| C4-P documentation and P1 synthetic CPU tests | **AUTHORIZED (P1 ONLY)** | See C4 P1 decision; no corpus, CUDA, training or other C4-D implementation |
+| C4-P P1 synthetic CPU reference/loss integration | **COMPLETE / PASS (P1.2)** | No corpus, CUDA or training; see P1.2 record |
+| C4-P1.3 deterministic streaming/sampling design | **PROPOSED FOR REVIEW** | Documentation only; external hash order and ack cursor recommended but not approved or implemented |
 
 ## 8. Proposed C4-P exit criteria
 
@@ -234,6 +242,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1.1 POLICY APPROVED; P1 REFERENCE TESTED; C4-P1.2 CPU MODEL INTEGRATION NOT EXECUTED**, not PASS.
+**Gate status:** C4 **IN PROGRESS — P1.2 CPU INTEGRATION PASS; P1.3 DESIGN PROPOSED / SCIENTIST REVIEW PENDING**, not PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
