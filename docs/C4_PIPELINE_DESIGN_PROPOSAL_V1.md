@@ -1,6 +1,6 @@
 # C4 — Data pipeline and training-system design proposal v1
 
-**Status: DESIGN IN PROGRESS / P1.2, P1.3a AND P1.3b SYNTHETIC CPU PASS / P1.3 O1 ARCHITECTURE APPROVED (2026-10-19).**
+**Status: DESIGN IN PROGRESS / P1.2, P1.3a, P1.3b SYNTHETIC CPU PASS / P1.3 O1 DESIGN APPROVED / P2 PROPOSED FOR SCIENTIST REVIEW (2026-10-19).**
 
 This document is a **planning artifact**, not a frozen C4 policy,
 authorization to process real corpus text, or authorization to train.
@@ -31,6 +31,14 @@ document identifiers, original coordinates, and immutable checksum pins.
 
 The C3 synthetic wall throughput cannot be used as a measured real-corpus
 end-to-end rate or scientifically justified training duration.
+
+**C4-P2 production-pipeline scientific planning** was separately authorized
+on 2026-10-19 **only as documentation**, and is proposed for review in
+[C4_P2_PRODUCTION_PIPELINE_SCIENTIFIC_DESIGN_V1.md](C4_P2_PRODUCTION_PIPELINE_SCIENTIFIC_DESIGN_V1.md).
+Its quota units, source interleaving, epoch and repetition options,
+training-state checkpoint boundary and resource/validation matrix are
+**not** newly approved scientific choices. In particular, nothing
+in C4-P2 resolves C1 source rights or selects mixture A/B/C.
 
 ## 2. Proposed C4 work packages and gates
 
@@ -250,6 +258,7 @@ or data-loader implementations without measurement.
 | C4-P1.3 deterministic streaming design | **INITIAL ARCHITECTURE APPROVED** | O1 external disk index, single logical producer and acknowledged-window cursor; production sampling open |
 | C4-P1.3a synthetic CPU streaming and replay | **COMPLETE / PASS** | 49 focused PASS; complete CPU suite 450 PASS / 5 SKIP; formatting/lint PASS; no real data, optimizer, CUDA or training |
 | C4-P1.3b synthetic CPU scalability | **COMPLETE / PASS** | Full CPU suite 470 PASS / 5 SKIP; Ruff PASS; three independent ext4 fixture sizes; RSS/disk/timing measured; no C1 or training |
+| C4-P2 future production pipeline scientific design | **DESIGN PROPOSED / REVIEW PENDING** | Documentation only; quota unit, sampling scheduler, epochs, token budget, checkpoint coupling and resource limits all undecided; C1 rights/mixture BLOCKED |
 
 ## 8. Proposed C4-P exit criteria
 
@@ -259,6 +268,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1.2, P1.3a AND P1.3b SYNTHETIC CPU COMPLETE / PASS; PRODUCTION SAMPLING, C1 RIGHTS AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
+**Gate status:** C4 **IN PROGRESS — P1.2, P1.3a AND P1.3b SYNTHETIC CPU COMPLETE / PASS; C4-P2 DESIGN PROPOSED / SCIENTIST REVIEW PENDING; PRODUCTION SAMPLING, C1 RIGHTS AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
