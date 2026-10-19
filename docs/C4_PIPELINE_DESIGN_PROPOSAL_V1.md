@@ -1,6 +1,6 @@
 # C4 — Data pipeline and training-system design proposal v1
 
-**Status: DESIGN IN PROGRESS / P1.2 AND P1.3a SYNTHETIC CPU PASS / P1.3 O1 ARCHITECTURE APPROVED (2026-10-19).**
+**Status: DESIGN IN PROGRESS / P1.2, P1.3a AND P1.3b SYNTHETIC CPU PASS / P1.3 O1 ARCHITECTURE APPROVED (2026-10-19).**
 
 This document is a **planning artifact**, not a frozen C4 policy,
 authorization to process real corpus text, or authorization to train.
@@ -64,7 +64,14 @@ consumer window**. The bounded synthetic CPU implementation **C4-P1.3a is COMPLE
 with 49 focused Orion passes, 450 complete-suite passes and five skips,
 and successful Ruff lint and post-format checks; see
 [C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md](C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md).
-The approved O1 baseline is **not** a completed production sampler.
+The separately authorized **C4-P1.3b synthetic CPU scalability study
+is also COMPLETE / PASS**, following a full 470-pass / five-skip CPU
+regression and three bounded Orion ext4 measurements, documented in
+[C4_P1_3B_SYNTHETIC_CPU_SCALABILITY_V1.md](C4_P1_3B_SYNTHETIC_CPU_SCALABILITY_V1.md).
+The largest fixture had 8,192 artificial documents (1,056,768 stream
+tokens), 23,960 KiB peak process RSS and 6.924444 s total time. These
+single-run fixture measurements are not a production performance
+estimate. The approved O1 baseline is **not** a completed production sampler.
 Epoch/reset BOS, production seed/order-key serialization, source quotas,
 C1 mixture, epoch/repeats, data-loader/optimizer checkpoint coupling
 and final batch remain undecided.
@@ -242,6 +249,7 @@ or data-loader implementations without measurement.
 | C4-P P1 synthetic CPU reference/loss integration | **COMPLETE / PASS (P1.2)** | No corpus, CUDA or training; see P1.2 record |
 | C4-P1.3 deterministic streaming design | **INITIAL ARCHITECTURE APPROVED** | O1 external disk index, single logical producer and acknowledged-window cursor; production sampling open |
 | C4-P1.3a synthetic CPU streaming and replay | **COMPLETE / PASS** | 49 focused PASS; complete CPU suite 450 PASS / 5 SKIP; formatting/lint PASS; no real data, optimizer, CUDA or training |
+| C4-P1.3b synthetic CPU scalability | **COMPLETE / PASS** | Full CPU suite 470 PASS / 5 SKIP; Ruff PASS; three independent ext4 fixture sizes; RSS/disk/timing measured; no C1 or training |
 
 ## 8. Proposed C4-P exit criteria
 
@@ -251,6 +259,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1.2 AND P1.3a SYNTHETIC CPU COMPLETE / PASS; PRODUCTION SAMPLING, C1 RIGHTS AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
+**Gate status:** C4 **IN PROGRESS — P1.2, P1.3a AND P1.3b SYNTHETIC CPU COMPLETE / PASS; PRODUCTION SAMPLING, C1 RIGHTS AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
