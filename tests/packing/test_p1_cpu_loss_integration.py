@@ -26,7 +26,10 @@ from cambacica.packing.p1_reference import (
 )
 
 torch = pytest.importorskip("torch", reason="PyTorch is an optional C3 dependency")
-from cambacica.model.transformer import CambacicaCausalLM  # noqa: E402
+from cambacica.model.transformer import (  # noqa: E402
+    CambacicaCausalLM,
+    next_token_loss,
+)
 
 
 def toy_document(
@@ -85,6 +88,23 @@ def test_model_matches_explicit_ce_and_manual_masked_nll() -> None:
         result.manual_masked_ce * result.scored_targets, abs=1e-6
     )
     assert all(parameter.grad is None for parameter in model.parameters())
+
+
+def test_p1_pre_shifted_labels_equal_c3_next_token_loss() -> None:
+    packed, window = short_packed_window()
+    model = tiny_cpu_model()
+    probe = probe_p1_window_cpu(model, window)
+    with torch.inference_mode():
+        original_tokens = torch.tensor((packed.tokens,), dtype=torch.long)
+        logits, expected = next_token_loss(model, original_tokens)
+        direct_logits, direct = model(
+            original_tokens[:, :-1], labels=original_tokens[:, 1:]
+        )
+
+    assert logits.shape == direct_logits.shape == (1, 5, 31)
+    torch.testing.assert_close(logits, direct_logits, rtol=1e-6, atol=1e-6)
+    assert probe.model_loss == pytest.approx(float(expected.item()), abs=1e-6)
+    assert probe.model_loss == pytest.approx(float(direct.item()), abs=1e-6)
 
 
 def test_ignored_trailing_positions_do_not_change_loss() -> None:
