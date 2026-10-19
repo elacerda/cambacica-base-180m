@@ -245,19 +245,22 @@ implementação sintética em CPU com ordenação O1 via índice SQLite,
 produtor lógico único, P1 EOS/overlap, cursor de janela confirmada e
 testes de retomada em
 [`C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md`](C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md).
-Commit confirmado:
+Commit de implementação confirmado:
 `0c30fffcfa17c76767f9516283410c7fbd514683` (somente três arquivos
-novos). Evidência fornecida da Orion: **49 testes focados PASS (0,89 s)**;
-`ruff check` PASS; os dois arquivos Python foram formatados.
-**PENDENTE:** saída da suíte completa CPU e `ruff format --check` após
-formatação. O GitHub não apresentou status CI para o commit consultado.
-Portanto, **C4-P1.3a ainda não é COMPLETE / PASS**.
+novos). **C4-P1.3a COMPLETE / PASS em 2026-10-19**:
+testes focados na Orion **49 PASS (0,89 s)**, `ruff check` PASS;
+depois do push e sincronização, `ruff format --check` reportou
+**2 arquivos já formatados**, e a suíte completa CPU com CUDA oculto
+reportou **450 PASS, 5 SKIP (20,09 s)**. Os motivos exatos dos cinco
+skips não foram fornecidos no resultado desta execução; isso não é
+evidência de validação de módulos opcionais ignorados. Nenhum novo
+código de treinamento/corpus foi introduzido neste fechamento.
 
 Autorização executada em C4-P1.3a: **somente protótipo e testes
 sintéticos em CPU**. Nenhum corpus real, CUDA/GPU, C3.7, C5, C6 ou
 treinamento foi autorizado.
 
-Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN APPROVED; P1.3a PUSHED / FOCUSED CPU PASS / FULL-SUITE PENDING**
+Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN APPROVED; P1.3a COMPLETE / PASS (SYNTHETIC CPU)**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
@@ -285,9 +288,11 @@ repositório completo ainda apontam problemas preexistentes em arquivos
 inalterados. A implementação não conclui C4 nem autoriza pipeline real,
 CUDA, treinamento, C3.7, C5 ou C6. BOS por documento, scoring de EOS,
 fronteiras e mascaramento de labels foram aprovados em C4-P1.1;
-a integração PyTorch em CPU foi verificada em C4-P1.2. Amostragem,
-streaming determinístico, retomada do dataloader, mistura, batch final
-e as demais decisões de treinamento permanecem abertas.
+a integração PyTorch em CPU foi verificada em C4-P1.2.
+O streaming **sintético** O1 e cursor de confirmação foram validados
+em C4-P1.3a. **Permanecem abertos** a amostragem/streaming de produção,
+retomada conjunta com estado do otimizador, mistura, batch final,
+receita de treinamento e as decisões bloqueadas por C1.
 
 ## C5 — Smoke training
 
