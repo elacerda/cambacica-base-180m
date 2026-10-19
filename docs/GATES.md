@@ -222,7 +222,16 @@ Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-Status: **IN PROGRESS — P1.1 APPROVED; SYNTHETIC CPU REFERENCE TESTED; PYTORCH CPU LOSS INTEGRATION NEXT**
+Status: **IN PROGRESS — P1.1 APPROVED; P1.2 CPU LOSS INTEGRATION IMPLEMENTED / VERIFICATION PENDING**
+
+A implementação da integração de loss **C4-P1.2** foi autorizada e
+adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
+validação explícita de `ignore_index=-100` e cálculo de CE mascarado).
+**Os testes não foram executados/verificados ainda no ambiente Orion.**
+Relatório, escopo e comandos de verificação em
+[`C4_P1_2_CPU_LOSS_INTEGRATION_V1.md`](C4_P1_2_CPU_LOSS_INTEGRATION_V1.md).
+Nenhuma execução GPU, treino, processamento do corpus ou alteração da
+arquitetura C ocorreu nesta tarefa.
 
 O protótipo de referência, limitado a tokens e metadados artificiais,
 está em [`src/cambacica/packing/p1_reference.py`](../src/cambacica/packing/p1_reference.py),
