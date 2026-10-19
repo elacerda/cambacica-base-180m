@@ -1,7 +1,8 @@
 # C4-P1.3b — Bounded synthetic CPU scalability study
 
 **Scientist authorization:** 2026-10-19.
-**Status: IMPLEMENTED AS A PATCH / LOCAL MEASUREMENTS AVAILABLE / ORION VERIFICATION PENDING.**
+**Status update (2026-10-19): COMPLETE / PASS — SYNTHETIC CPU SCALABILITY ONLY.**
+Implementation commit: `22db87a9c35cf532202c051dfe0ce43ea0530fb0`.
 
 This work measures the already authorized C4-P1.3a artificial-token O1
 SQLite index, single logical P1 stream producer and acknowledged-window cursor.
@@ -101,11 +102,65 @@ an interface-compatible local reference **stand-in**; it is **not**
 verification against the checked-in full P1 reference in the Orion
 repository. Ruff was not available in the isolated environment.
 
-## Required Orion verification
+## Orion CPU validation and synthetic measurements (2026-10-19)
 
-After applying the patch to a clean checkout, format and check **only the
-two newly added Python files**; rerun the focused and full CPU suites,
-then run each size **in a separate Python process**. For example:
+The scientist supplied terminal evidence from `cenpesor`, after applying
+and formatting the P1.3b files in the working tree:
+
+- `ruff format`: **2 files reformatted**; `ruff check`: **All checks
+  passed!**; `ruff format --check`: **2 files already formatted**.
+- Full repository pytest with `CUDA_VISIBLE_DEVICES=""` and
+  `PYTHONPATH=src`: **470 passed, 5 skipped in 20.62 s**. The five
+  skip reasons were not included in the supplied output.
+- The scientist ran three *separate CLI processes* with
+  `--tokens-per-document 128` and `--restart-after 1,8,32`.
+  `findmnt -T /tmp` confirmed local `/dev/nvme0n1p2` filesystem
+  type **ext4**. The platform reported
+  `Linux-5.15.0-191-generic-x86_64-with-glibc2.35` and Python
+  `3.10.12`. No C1 data or GPU were used.
+- The three expected new files were committed and pushed to `main`
+  in `22db87a9c35cf532202c051dfe0ce43ea0530fb0`. An independent
+  GitHub comparison with the preceding HEAD confirms exactly those
+  three additions and no modifications to frozen C1/C2/C3 code.
+
+**Observed Orion measurements (single run per case, not statistical
+benchmarks):**
+
+| Artificial docs × tokens/doc | Stream tokens | Windows | Peak RSS (KiB) | SQLite bytes | Payload bytes | Total index bytes | Build (s) | Window read (s) | Ack + fsync (s) | Resume (s) | Total (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 128 × 128 | 16,512 | 5 | 21,136 | 102,400 | 32,768 | 135,736 | 0.035564 | 0.019368 | 0.011587 | 0.012722 | 0.086197 |
+| 1,024 × 128 | 132,096 | 33 | 22,012 | 634,880 | 262,144 | 897,594 | 0.169466 | 0.209127 | 0.096856 | 0.015703 | 0.506973 |
+| 8,192 × 128 | 1,056,768 | 258 | 23,960 | 4,845,568 | 2,097,152 | 6,943,291 | 1.264292 | 3.131532 | 2.415402 | 0.053938 | 6.924444 |
+
+All three reports included `fixture_only: true`, `resume_checks: 1`,
+and respectively 128, 1,024, 8,192 scored EOS tokens. Their scored
+next-token targets were **16,511**, **132,095**, and **1,056,767**:
+each is exactly `stream_tokens - 1`. Each run returned a final
+order SHA-256 and acknowledgment-chain SHA-256 in its JSON.
+
+**Interpretation and limits:** observed peak process RSS ranged from
+approximately **20.64 MiB** to **23.40 MiB** over 64× more
+artificial documents, consistent with bounded resident memory over
+these fixture sizes. This is **not** a proof of a constant-memory
+production loader. The largest case spent **2.415402 s in ack + fsync**,
+about **43.5%** of the measured **5.546933 s read-and-ack phase**;
+this identifies cursor persistence as a candidate for later, separately
+approved optimization, not authorization to change snapshot cadence.
+Each size was run only once. Disk/index costs, memory, timing and
+resume behavior must **not** be extrapolated to C1's 21.6M documents,
+production tokenization, or model training; injected restart is
+in-process replay, not a power-failure test.
+
+**Gate decision:** the authorized bounded P1.3b synthetic CPU
+scalability study is **COMPLETE / PASS**, with test, format, three-scale
+measurement and published-commit evidence. The complete C4 pipeline
+is **IN PROGRESS**.
+
+## Orion validation commands (executed; retained for reproduction)
+
+Validation was performed on Orion using the new files after formatting;
+these commands are retained as reproducibility instructions. Run one
+size **per Python process** if repeating the measurements:
 
 ```bash
 cd ~/dev/cambacica-base-180m
@@ -150,12 +205,15 @@ and scientific review of the scaling curves.
 
 ## Next gate
 
-**C4-P1.3b remains IMPLEMENTED / ORION VERIFICATION PENDING.** Upon
-clean formatting/lint, focused tests, full CPU regression and collected
-three-size Orion measurement output, review for synthetic-only
-COMPLETE/PASS. Any future change to snapshot cadence, async writer,
-provenance representation, real-data token adapters, optimizer coupling
-or training requires independent scientific review and authorization.
+**C4-P1.3b COMPLETE / PASS (2026-10-19)** for the specified
+synthetic-only CPU study. The Orion full-suite and lint/format checks,
+three bounded measurements on local ext4, and publication of the
+three new files are documented above. No production-scale performance
+claim or change to scientific sampling policies follows from this result.
+
+Any future change to snapshot cadence, async writer, provenance
+representation, real-data token adapters, optimizer coupling, or
+training requires independent scientific review and authorization.
 
 C4 overall **IN PROGRESS**; C1 rights/use and mixture **IN PROGRESS**.
 C3.7, C4 production processing, C5/C6 and GPU work **NOT AUTHORIZED**.
