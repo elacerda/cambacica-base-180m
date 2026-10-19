@@ -121,12 +121,11 @@ APPROVED / VERIFIED**.
 **Objetivo:** escolher a arquitetura final dentro da faixa de 150–200M.
 
 As três propostas A/B/C têm implementação PyTorch e contagem analítica de
-parâmetros. A validação local limitada passou para contabilidade,
-configuração, política de GPU mockada, métricas e artefatos; testes que
-dependem de PyTorch foram ignorados porque o pacote opcional não está
-instalado neste ambiente. Resultado local verificado em 2026-10-16: `pytest`
-345 passed / 9 skipped; `ruff check .` reportou apenas 2 E402 preexistentes
-em `tests/model/test_transformer.py`, fora do escopo desta etapa.
+parâmetros. A suíte de validação incluiu configuração, parâmetros, GPU
+mockada, métricas, artefatos, acumulação e checkpoint/restart. Validação
+anterior à execução C3.6: **387 passed / 5 skipped** com PyTorch
+2.3.1+cu121; os cinco skips correspondem a testes opcionais de rede.
+Esse resultado é de CPU/testes e não substitui as medições reais da GPU.
 
 A matriz C3.4 de seis benchmarks sintéticos foi executada na Orion
 (`cenpesor`, GPU física 0) em 2026-10-16, sob autorização do cientista:
@@ -155,17 +154,29 @@ configurações experimentais de comparação. Registro completo em
 [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md).
 
 Em C3.6, o cientista aprovou contexto 4.096, tying, 176.180.224 parâmetros,
-BF16 como precisão computacional de referência e Orion GPU física 0. O
-baseline versionado e sua validação ficam em
-[`C3_TRAINING_BASELINE_V1.md`](C3_TRAINING_BASELINE_V1.md). A matriz de
-microbatch/acumulação e os protocolos de memória e restart estão propostos,
-mas ainda não foram executados.
+BF16 como precisão computacional de referência e Orion GPU física 0.
+**C3.6-M: COMPLETE / PASS** — as nove células de microbatch 1/2/4 ×
+acumulação 1/2/4 foram executadas em 2026-10-17 na GPU 0, todas concluídas
+com resultados e checksums válidos, máximo observado **110.674 tokens/s**,
+pico NVML de **19.740 MiB** e 83,48 segundos para a matriz.
+**C3.6-R: COMPLETE / PASS** — checkpoint/restart em três processos
+independentes, com losses idênticos bit a bit e **333/333 tensores**
+idênticos, delta máximo zero. A publicação `finalize-suite` retornou
+`status=published` no NFS em
+`/mnt/data/cambacica-base-180m/c3-scalability/c3.6/c36-matrix-20261016-gpu0-v1/`.
+A conclusão científica do C3.6 foi aprovada em 2026-10-19.
+Resultados detalhados em [`C3_6_SCALABILITY_RESULTS_V1.md`](C3_6_SCALABILITY_RESULTS_V1.md);
+o baseline original permanece em
+[`C3_TRAINING_BASELINE_V1.md`](C3_TRAINING_BASELINE_V1.md).
 
-Continuam indecididos: optimizer e schedule, batch efetivo, orçamento de
-tokens, política de activation checkpointing, mistura final A/B/C,
-armazenamento dos estados do modelo/optimizer, e autorização/tamanho de
-qualquer piloto de qualidade (C3.7). A validação de escalabilidade C3.6 ainda
-requer autorização explícita para executar na GPU.
+Continuam indecididos: otimizador e schedule definitivos, batch efetivo,
+orçamento de tokens, política de activation checkpointing, mistura final
+A/B/C, armazenamento dos estados e checkpoints de treinamento.
+O microbatch 4 / acumulação 1 (16.384 tokens/update) é candidato
+**computacional provisório**, não uma escolha científica congelada.
+O piloto de qualidade C3.7 segue **BLOCKED** por C1 (direitos/política
+de uso e mistura/view final) e requer autorização científica específica.
+Nenhum teste C3.6 autoriza treinamento ou processamento do corpus real.
 
 Consulte [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md),
 [`C3_ARCHITECTURE_PLANNING.md`](C3_ARCHITECTURE_PLANNING.md),
@@ -173,12 +184,13 @@ Consulte [`C3_ARCHITECTURE_SELECTION_V1.md`](C3_ARCHITECTURE_SELECTION_V1.md),
 [`C3_BENCHMARK_METHODOLOGY.md`](C3_BENCHMARK_METHODOLOGY.md) e
 [`C3_BENCHMARK_RUNBOOK.md`](C3_BENCHMARK_RUNBOOK.md).
 
-Status: **IN PROGRESS — Arquitetura C e baseline C3.6 aprovados; validação de escalabilidade pendente**
+Status: **COMPLETE / PASS — Arquitetura C selecionada; C3.6-M e C3.6-R executados e aprovados**
 
-C3 só poderá ser marcado **COMPLETE** depois que a matriz e o protocolo de
-checkpoint/restart C3.6 forem executados sob autorização e o cientista revisar
-os resultados. O baseline aprovado não congela a receita completa de
-treinamento.
+Os critérios de saída de C3 foram atingidos mediante revisão científica da
+matriz e do restart em 2026-10-19. A conclusão deste gate é restrita à
+arquitetura e à validação de engenharia sintética; **não** congela a
+receita de treinamento nem libera o C3.7, C4, C5 ou C6. C1 permanece
+IN PROGRESS, e C4 continua PENDING até seu próprio planejamento e aprovação.
 
 ## C4 — Pipeline de dados e treinamento
 
