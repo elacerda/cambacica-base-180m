@@ -65,7 +65,7 @@ computacional. C3 não escolheu otimizador/schedule definitivos, batch
 efetivo, orçamento de tokens nem política de activation checkpointing.
 **C1 segue IN PROGRESS**, e a mistura final do corpus e os direitos de uso
 continuam pendentes. O piloto C3.7 com dados reais está bloqueado até
-C1 e uma autorização científica específica. **C4 está IN PROGRESS — PLANNING ONLY**, com [proposta de desenho C4](docs/C4_PIPELINE_DESIGN_PROPOSAL_V1.md) em revisão; **C5–C7 permanecem PENDING**;
+C1 e uma autorização científica específica. **C4 está IN PROGRESS**: o cientista aprovou **P1 (packing contínuo com EOS)** como baseline inicial, com protótipo e testes CPU apenas sintéticos autorizados; o [contrato P1](docs/C4_P1_PACKING_DECISION_V1.md) e o [desenho C4](docs/C4_PIPELINE_DESIGN_PROPOSAL_V1.md) preservam decisões abertas de fronteira, batch, mistura e otimização. **C5–C7 permanecem PENDING**;
 nenhum benchmark autoriza pretraining. Consulte também o
 [plano](docs/C3_ARCHITECTURE_PLANNING.md), a
 [implementação](docs/C3_ARCHITECTURE_IMPLEMENTATION.md), a
