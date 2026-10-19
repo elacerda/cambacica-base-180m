@@ -1,6 +1,6 @@
 # C4 — Data pipeline and training-system design proposal v1
 
-**Status: DESIGN IN PROGRESS / P1 APPROVED BY SCIENTIST (2026-10-19).**
+**Status: DESIGN IN PROGRESS / P1 AND INITIAL C4-P1.1 SEQUENCE/LOSS POLICY APPROVED (2026-10-19).**
 
 This document is a **planning artifact**, not a frozen C4 policy,
 authorization to process real corpus text, or authorization to train.
@@ -47,9 +47,12 @@ The bounded reference and focused tests are implemented at
 `src/cambacica/packing/p1_reference.py` and
 `tests/packing/test_p1_reference.py`. The focused suite passed 24/24;
 the full available CPU suite passed 379 tests with 10 documented skips.
-This closes only the synthetic P1 reference task. BOS, EOS loss scoring,
-sampling, mixture weights and final batch remain provisional or open;
-the reference does not authorize a production pipeline.
+This closes only the synthetic P1 reference task. **Initial BOS-per-document,
+EOS scoring and label masking policy C4-P1.1 is now approved** in
+[C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md).
+Epoch/reset BOS, tokenizer-special-token integration, sampling,
+mixture weights and final batch remain open; the reference does not
+authorize a production pipeline or model integration testing.
 
 1. Produce versioned **data interface contracts** for
    `document -> tokenized document -> sequence -> training batch`. Every
@@ -211,8 +214,8 @@ or data-loader implementations without measurement.
 | Decision | Current status | Evidence/requirement before approval |
 | --- | --- | --- |
 | Packing P1/P2/P3; attention across documents | **P1 APPROVED** | Contiguous EOS stream, causal cross-document attention allowed; low-level semantics remain to review |
-| BOS/EOS, loss/padding/mask semantics | OPEN | C2 identity fixed; CPU boundary tests |
-| 4,096 input/label alignment, tail/overlap | OPEN | Prove exact coverage and accounting |
+| Initial BOS/EOS and loss/padding/mask semantics | **C4-P1.1 APPROVED** | No per-document BOS; score EOS and cross-document targets; labels `-100` for pad; future CPU PyTorch integration untested |
+| 4,096 input/label alignment, tail/overlap | **P1.1 POLICY APPROVED; REFERENCE TESTED** | 4,097 backing / 4,096 stride; pending CPU-model loss integration and production stream verification |
 | Mixture A/B/C and source quotas | BLOCKED BY C1 | Final rights/use policy and mixture-selection gate |
 | Mixture weights expressed in actual model tokens | OPEN | Distinguish from C1 normalized-word shares |
 | Training microbatch/accumulation | OPEN | 4×1 engineering candidate only |
@@ -231,6 +234,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU REFERENCE IMPLEMENTED AND TESTED**, not PASS.
+**Gate status:** C4 **IN PROGRESS — P1.1 POLICY APPROVED; P1 REFERENCE TESTED; C4-P1.2 CPU MODEL INTEGRATION NOT EXECUTED**, not PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
