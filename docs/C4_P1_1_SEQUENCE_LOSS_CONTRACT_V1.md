@@ -88,7 +88,7 @@ or long-running training correctness.
 
 ## 3. Follow-on C4-P1.2 CPU integration acceptance proposal
 
-**Next work package: proposed, NOT executed or separately authorized.**
+**Status update (2026-10-19): implementation explicitly authorized by the scientist, now committed; the actual CPU test execution remains PENDING.** See [C4-P1.2 integration record](C4_P1_2_CPU_LOSS_INTEGRATION_V1.md).
 
 Build a bounded synthetic-only CPU test between the approved P1
 reference and the existing C3 `CambacicaCausalLM.forward`:
@@ -125,4 +125,4 @@ deterministic restart does not replace this loss integration test.
   require explicit independent approvals.
 
 **Gate C4 status: IN PROGRESS. C4-P1.1 POLICY APPROVED; P1.2 CPU
-integration remains NEXT / NOT EXECUTED.**
+integration IMPLEMENTED / EXECUTION AND REVIEW PENDING.**
