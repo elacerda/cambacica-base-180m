@@ -302,7 +302,27 @@ implementação, processamento/tokenização do corpus C1,
 execução de testes, uso de GPU/CUDA/NVML, treinamento, C3.7,
 C5 ou C6 nesta etapa.
 
-Status: **IN PROGRESS — P1.2/P1.3a/P1.3b SYNTHETIC CPU PASS; P1.3 DESIGN APPROVED; P2 DESIGN PROPOSED / SCIENTIST REVIEW PENDING**
+**C4-P2.1 — REVIEW DOCUMENTED / SCIENTIST DECISIONS PENDING
+(2026-10-19):** autorização explícita apenas para revisar cientificamente,
+em papel, as dependências até o primeiro treinamento. Documento
+[`C4_P2_1_TRAINING_READINESS_DECISION_REVIEW_V1.md`](C4_P2_1_TRAINING_READINESS_DECISION_REVIEW_V1.md)
+separa **C5 (primeiro smoke real e limitado)** de **C6 (pré-treino
+principal)**, com os bloqueios e a matriz de aprovação. A proposta
+recomenda priorizar um pequeno C5 em *view* explicitamente liberada
+para treino e holdout, enquanto a composição e orçamento do C6 são
+decididos em paralelo; **não declara nenhuma fonte liberada** e
+**não seleciona** M1/M2, cotas Q-T/Q-W, merge S1/S2, épocas,
+reuso, treinamento ou orçamento de tokens. C1 documentou
+tetos no-repeat aproximados em palavras normalizadas pós-holdout
+A ≤259.918.425; B ≤519.836.850; C 415.336.413 **apenas
+ilustrativo** (98% assumidos). Estes números não são tokens C2
+nem garantias de capacidade para um experimento real.
+
+**Autorização C4-P2.1 permanece somente documental.** Pipeline real,
+tokenização C1, acesso a corpus, qualquer GPU/treinamento e C5/C6
+continuam sem autorização; o C4 não foi concluído.
+
+Status: **IN PROGRESS — P1.2/P1.3a/P1.3b SYNTHETIC CPU PASS; P1.3 DESIGN APPROVED; P2 DESIGN PROPOSED; P2.1 REVIEW DOCUMENTED / SCIENTIST DECISIONS PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
