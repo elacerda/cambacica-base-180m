@@ -318,11 +318,21 @@ A ≤259.918.425; B ≤519.836.850; C 415.336.413 **apenas
 ilustrativo** (98% assumidos). Estes números não são tokens C2
 nem garantias de capacidade para um experimento real.
 
+**Decisão científica posterior (2026-10-19): prioridade M1 APPROVED.**
+Após a revisão C4-P2.1, o cientista concordou em priorizar
+**um C5 real, curto e limitado, sobre view explicitamente autorizada**
+antes do C6 principal. Esta é **aprovação de prioridade de trabalho**,
+não uma autorização de uso de fontes, definição de dados, implementação
+C4-D/C4-T, receita, GPU ou execução C5. O próximo bloqueio decisório
+é o **C1: base de uso/direitos da(s) fonte(s) escolhida(s), obrigações e
+view de treino/holdout preservando C1-S1**. Mistura A/B/C final,
+orçamento de tokens, amostragem, épocas e checkpoint permanecem abertos.
+
 **Autorização C4-P2.1 permanece somente documental.** Pipeline real,
 tokenização C1, acesso a corpus, qualquer GPU/treinamento e C5/C6
 continuam sem autorização; o C4 não foi concluído.
 
-Status: **IN PROGRESS — P1.2/P1.3a/P1.3b SYNTHETIC CPU PASS; P1.3 DESIGN APPROVED; P2 DESIGN PROPOSED; P2.1 REVIEW DOCUMENTED / SCIENTIST DECISIONS PENDING**
+Status: **IN PROGRESS — P1.2/P1.3a/P1.3b SYNTHETIC CPU PASS; P1.3 DESIGN APPROVED; P2 DESIGN PROPOSED; P2.1 M1 PRIORITY APPROVED / EXECUTION AND POLICIES PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
