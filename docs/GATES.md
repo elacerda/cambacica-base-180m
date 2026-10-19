@@ -90,6 +90,20 @@ Progresso atual:
   estiverem resolvidos; C2 iniciou somente após a validação limitada da
   implementação descrita em [`C2_TOKENIZER_EXPERIMENTS.md`](C2_TOKENIZER_EXPERIMENTS.md).
 
+**C1-M1 — revisão documental de direitos Wikipedia/Carolina (2026-10-19):**
+**REVIEW COMPLETE / RIGHTS CLEARANCE PENDING**. O registro
+[`C1_M1_WIKIPEDIA_CAROLINA_RIGHTS_DOCUMENTARY_REVIEW_V1.md`](C1_M1_WIKIPEDIA_CAROLINA_RIGHTS_DOCUMENTARY_REVIEW_V1.md)
+confronta termos oficiais Wikimedia, a transição CC BY-SA 3.0/4.0,
+o commit upstream Carolina v2.0.1 `55e63a5` (declaração de licença
+dos **cabeçalhos**, não dos textos), e os termos Carolina/USP.
+A Wikipedia PT é uma candidata à **avaliação institucional primeiro**,
+não uma fonte declarada liberada; Carolina segue heterogêneo por
+documento e taxonomia (dat/jud/leg/pub/soc/uni/wik).
+**Nenhuma licença geral, permissão de treinamento, view M1 ou
+redistribuição foi aprovada**. É necessária decisão aplicável
+ao uso acadêmico local e aos futuros outputs/model weights; o
+acesso/processamento do C1 real permanece proibido nesta etapa.
+
 Próximos critérios de C1:
 
 - confirmar a base de uso científico local quando a autorização existente não cobrir os caveats de direitos; separar revisão de direitos para publicação/redistribuição. Não há novo estudo de decontaminação pendente;
