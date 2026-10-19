@@ -3,6 +3,20 @@
 **Status update (2026-10-19): SCIENTIST APPROVED INITIAL C4-P1.3
 DESIGN BASELINE — O1 + SINGLE LOGICAL PRODUCER + ACKNOWLEDGED CURSOR.**
 
+**Subsequent implementation and verification (2026-10-19):**
+Following this initial design decision, the scientist *separately*
+authorized the synthetic CPU-only C4-P1.3a prototype. It was
+implemented and pushed as
+`0c30fffcfa17c76767f9516283410c7fbd514683`, and
+the Orion evidence now supports **C4-P1.3a COMPLETE / PASS**:
+49 focused tests passed; the full available CPU suite reported
+450 passed / 5 skipped; Ruff lint and post-format checks passed.
+See [C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md](C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md).
+Statements below about CPU implementation "not authorized" describe
+the **original design-only approval**, not the later separately
+authorized synthetic P1.3a task. No C1 production processing, GPU,
+optimizer coupling or training has been approved.
+
 The scientist approved the proposed *architecture baseline* after the
 design-only proposal had been published. The approved choices are
 (1) O1: an external hash-ordered, disk-backed index for a fixed immutable
@@ -322,7 +336,7 @@ approvals.
 | In-flight prefetch and ack | Resume at highest contiguous consumer-acknowledged/committed window; replay unacknowledged work | **ARCHITECTURE APPROVED**; atomic consumer binding/format still OPEN |
 | Cursor/checkpoint format and cadence | Checksum + atomic local ext4 snapshot tied to future consumer state | OPEN |
 | Bounded memory/disk budgets | Explicit values from measured synthetic/approved later tests, not guessed | OPEN |
-| CPU synthetic prototype | Implement only after separate scientific authorization | NOT AUTHORIZED |
+| CPU synthetic prototype C4-P1.3a | Separate authorization granted; synthetic O1/index/cursor implementation verified on Orion CPU | **COMPLETE / PASS** (synthetic only) |
 | Real C1 adapter/tokenization and any GPU | Separate rights/usage review and execution authorization | NOT AUTHORIZED |
 
 **Scientist approval now recorded:** the initial design baseline
@@ -332,19 +346,20 @@ window. Crash/replay on artificial data is the required *future
 verification approach*, not a test already run or permission
 to implement the test harness.
 
-**Next authorization gate:** a separately reviewed, bounded CPU-only
-synthetic streaming prototype with a pinned fixture view and explicit
-seed/key/cursor serialization, plus its error-injection tests.
-The implementation must not be treated as authorized by this
-document alone.
+**Subsequent gate resolution:** the bounded CPU-only synthetic
+streaming prototype was separately authorized and verified in
+C4-P1.3a; see the linked implementation report. This design approval
+alone still cannot be used to justify any **new** implementation,
+production dataset access or training workload.
 
 ## 8. Status and stop line
 
 **C4-P1.3: INITIAL DESIGN BASELINE SCIENTIST APPROVED;
-IMPLEMENTATION / CPU TESTING NOT AUTHORIZED.**
+SYNTHETIC CPU FOLLOW-UP C4-P1.3a COMPLETE / PASS.**
 **C4: IN PROGRESS. C1: IN PROGRESS. C3.7, C4 production processing,
 C5 and C6: NOT AUTHORIZED.**
 
-No implementation, synthetic CPU prototype, real corpus read,
-tokenization, sample materialization, dataloader execution, GPU work,
-optimizer update or training was performed under this authorization.
+The original design-only decision performed no implementation.
+The subsequent separately authorized P1.3a implemented and verified
+a synthetic CPU prototype; it did not read/tokenize production
+C1 text, run a real dataloader, use GPU or update a model/optimizer.
