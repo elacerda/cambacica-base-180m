@@ -274,8 +274,12 @@ and is recorded in
 It distinguishes the minimum rights-approved bounded C5 learning-smoke
 path from the additional C6 main-pretraining prerequisites, with the
 C1 no-reuse mixture word ceilings and explicit alternatives for
-sampling, epochs and checkpoint atomicity. Its M1-first recommendation
-is **not a scientist-approved training view or execution permission**.
+sampling, epochs and checkpoint atomicity. **The scientist subsequently
+APPROVED M1 as the priority objective (2026-10-19)**: target a small,
+rights-cleared C5 learning smoke first, while keeping full C6 mixture
+and budget decisions separate. This approval does **not** establish a
+rights-cleared source/view, an accepted C4-D/C4-T design or any
+permission to access C1, execute a GPU run or train.
 
 **Gate status:** C4 **IN PROGRESS — P1.2, P1.3a AND P1.3b SYNTHETIC CPU COMPLETE / PASS; C4-P2 DESIGN PROPOSED; C4-P2.1 REVIEW DOCUMENTED / SCIENTIST DECISIONS PENDING; C1 RIGHTS, PRODUCTION SAMPLING AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
