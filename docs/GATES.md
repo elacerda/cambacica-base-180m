@@ -213,24 +213,30 @@ labels inválidos `-100` excluídos da loss. A decisão está registrada em
 [`C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md`](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md).
 Permanecem abertas políticas BOS para reinício/épocas, inserção de specials
 por adaptadores, amostragem/mistura A/B/C, batch, optimizer, schedule e
-orçamento de tokens. **Integração da loss PyTorch em CPU ainda não testada.**
+orçamento de tokens. **Integração C4-P1.2 verificada em CPU com tokens artificiais (COMPLETE / PASS).**
 
-Autorização atual: **desenho e implementação/testes limitados à referência
-CPU com tokens artificiais P1**, sem importar PyTorch/CUDA, sem ler,
-tokenizar ou materializar corpus C1 de produção, e sem executar treinamento.
+Autorização concluída: referência P1 em Python puro e integração C4-P1.2
+com a classe PyTorch do Transformer **somente em CPU e com tokens
+artificiais**, sem acessar CUDA/NVML, sem ler, tokenizar ou materializar
+corpus C1 de produção, e sem executar treinamento. A implementação de
+streaming/amostragem, mesmo sintética, requer aprovação própria.
 Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-Status: **IN PROGRESS — P1.1 APPROVED; P1.2 CPU FUNCTIONAL PASS / SOURCE FORMAT PENDING**
+Status: **IN PROGRESS — P1.1 APPROVED; P1.2 COMPLETE / PASS; STREAMING/SAMPLING DESIGN NEXT**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
 validação explícita de `ignore_index=-100` e cálculo de CE mascarado).
-**Validação funcional Orion: PASS** — 51 testes focados aprovados, 425 testes
-na suíte completa aprovados e 5 skips, todos com CUDA oculto. `ruff check`
-passou; **`ruff format --check` permanece PENDING**, pois os dois arquivos
-novos requerem formatação. Portanto, C4-P1.2 ainda não está encerrado.
+**C4-P1.2 COMPLETE / PASS (2026-10-19):** 51 testes focados aprovados
+após formatação (2,51 s); suíte completa antes da formatação: 425
+aprovados e cinco skips (19,35 s), com CUDA oculto. `ruff check` e
+`ruff format --check` passaram nos dois arquivos corrigidos, e o
+`git diff --check` passou. Commit de formatação publicado:
+`29e966a283b2fc7f1343fefacceeb3c47ad9287f`, que altera somente
+os dois arquivos Python da integração. Esta validação é sintética/CPU,
+sem execução real de pretraining.
 Relatório e evidências em
 [`C4_P1_2_CPU_LOSS_INTEGRATION_V1.md`](C4_P1_2_CPU_LOSS_INTEGRATION_V1.md).
 Nenhuma execução GPU, treino, processamento do corpus ou alteração da
@@ -245,9 +251,10 @@ Ruff e formatação passaram nos arquivos Python alterados; verificações de
 repositório completo ainda apontam problemas preexistentes em arquivos
 inalterados. A implementação não conclui C4 nem autoriza pipeline real,
 CUDA, treinamento, C3.7, C5 ou C6. BOS por documento, scoring de EOS,
-fronteiras e mascaramento de labels foram aprovados em C4-P1.1, mas a
-integração PyTorch em CPU ainda não foi verificada. Amostragem, mistura,
-batch final e as demais decisões de treinamento permanecem abertas.
+fronteiras e mascaramento de labels foram aprovados em C4-P1.1;
+a integração PyTorch em CPU foi verificada em C4-P1.2. Amostragem,
+streaming determinístico, retomada do dataloader, mistura, batch final
+e as demais decisões de treinamento permanecem abertas.
 
 ## C5 — Smoke training
 
