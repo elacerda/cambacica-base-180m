@@ -87,11 +87,15 @@ def probe_p1_window_cpu(
         raise ValueError("C4-P1.1 requires every valid next-token target to be scored")
     if any(target != IGNORE_INDEX for target in window.labels[count:]):
         raise ValueError("trailing invalid labels must use ignore_index=-100")
-    if any(type(token) is not int or not 0 <= token < VOCAB_SIZE
-           for token in window.input_ids):
+    if any(
+        type(token) is not int or not 0 <= token < VOCAB_SIZE
+        for token in window.input_ids
+    ):
         raise ValueError("window contains invalid input IDs")
-    if any(type(token) is not int or not 0 <= token < VOCAB_SIZE
-           for token in window.labels[:count]):
+    if any(
+        type(token) is not int or not 0 <= token < VOCAB_SIZE
+        for token in window.labels[:count]
+    ):
         raise ValueError("window contains invalid valid-target IDs")
     available = CONTEXT_LENGTH - count
     if ignored_tail_positions > available:
@@ -108,8 +112,10 @@ def probe_p1_window_cpu(
     if not hasattr(model, "spec"):
         raise TypeError("model must expose an ArchitectureSpec")
     vocab_size = model.spec.vocab_size
-    if (max(window.input_ids[:positions]) >= vocab_size
-            or max(window.labels[:count]) >= vocab_size):
+    if (
+        max(window.input_ids[:positions]) >= vocab_size
+        or max(window.labels[:count]) >= vocab_size
+    ):
         raise ValueError("artificial probe tokens exceed the tiny model vocabulary")
 
     inputs = torch.tensor((window.input_ids[:positions],), dtype=torch.long)
@@ -130,9 +136,7 @@ def probe_p1_window_cpu(
         selected_logits = float_logits[mask]
         selected_labels = labels[mask]
         log_probabilities = F.log_softmax(selected_logits, dim=-1)
-        nll = -log_probabilities.gather(
-            1, selected_labels.unsqueeze(1)
-        ).squeeze(1)
+        nll = -log_probabilities.gather(1, selected_labels.unsqueeze(1)).squeeze(1)
         manual = nll.sum() / scored_targets
 
     values = (model_loss, explicit, manual)

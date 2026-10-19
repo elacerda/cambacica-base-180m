@@ -46,27 +46,33 @@ def toy_document(
         split=split,
         source="c4-p1.2-artificial",
         subset="cpu-test-only",
-        content_hash=hashlib.sha256(
-            repr((name, payload)).encode("utf-8")
-        ).hexdigest(),
+        content_hash=hashlib.sha256(repr((name, payload)).encode("utf-8")).hexdigest(),
         token_ids=payload,
     )
 
 
 def tiny_cpu_model() -> CambacicaCausalLM:
     spec = ArchitectureSpec(
-        "T", "synthetic-p1.2-tiny", 16, 2, 4, 32,
-        vocab_size=31, head_dim=4,
+        "T",
+        "synthetic-p1.2-tiny",
+        16,
+        2,
+        4,
+        32,
+        vocab_size=31,
+        head_dim=4,
     )
     return CambacicaCausalLM(spec, seed=20261019, device="cpu").eval()
 
 
 def short_packed_window():
-    packed = pack_documents_by_split([
-        toy_document("a", [10, 11]),
-        toy_document("b", [12]),
-        toy_document("empty", []),
-    ])["train"]
+    packed = pack_documents_by_split(
+        [
+            toy_document("a", [10, 11]),
+            toy_document("b", [12]),
+            toy_document("empty", []),
+        ]
+    )["train"]
     assert packed.tokens == (10, 11, EOS_ID, 12, EOS_ID, EOS_ID)
     return packed, packed.windows[0]
 
@@ -78,7 +84,13 @@ def test_model_matches_explicit_ce_and_manual_masked_nll() -> None:
 
     assert packed.accounting.unique_scored_targets == 5
     assert window.labels[:7] == (
-        11, EOS_ID, 12, EOS_ID, EOS_ID, IGNORE_INDEX, IGNORE_INDEX,
+        11,
+        EOS_ID,
+        12,
+        EOS_ID,
+        EOS_ID,
+        IGNORE_INDEX,
+        IGNORE_INDEX,
     )
     assert result.scored_targets == 5
     assert result.ignored_targets == 2
@@ -133,23 +145,27 @@ def test_eos_and_cross_document_transition_targets_are_scored() -> None:
 
 def test_causal_prefix_is_not_affected_by_later_document_tokens() -> None:
     model = tiny_cpu_model()
-    first = pack_documents_by_split([
-        toy_document("alpha", [10, 11]), toy_document("beta", [12]),
-    ])["train"]
-    changed = pack_documents_by_split([
-        toy_document("alpha", [10, 11]), toy_document("beta", [15]),
-    ])["train"]
+    first = pack_documents_by_split(
+        [
+            toy_document("alpha", [10, 11]),
+            toy_document("beta", [12]),
+        ]
+    )["train"]
+    changed = pack_documents_by_split(
+        [
+            toy_document("alpha", [10, 11]),
+            toy_document("beta", [15]),
+        ]
+    )["train"]
 
     with torch.inference_mode():
-        original_logits = model(
-            torch.tensor((first.tokens[:-1],), dtype=torch.long)
-        )
-        changed_logits = model(
-            torch.tensor((changed.tokens[:-1],), dtype=torch.long)
-        )
+        original_logits = model(torch.tensor((first.tokens[:-1],), dtype=torch.long))
+        changed_logits = model(torch.tensor((changed.tokens[:-1],), dtype=torch.long))
     torch.testing.assert_close(
-        original_logits[:, :3], changed_logits[:, :3],
-        rtol=1e-6, atol=1e-6,
+        original_logits[:, :3],
+        changed_logits[:, :3],
+        rtol=1e-6,
+        atol=1e-6,
     )
 
 
@@ -168,29 +184,31 @@ def test_train_validation_test_have_independent_contexts() -> None:
     model = tiny_cpu_model()
     for split in ("train", "validation", "test"):
         assert all(span.split == split for span in packed[split].document_spans)
-        assert probe_p1_window_cpu(
-            model, packed[split].windows[0], ignored_tail_positions=1
-        ).scored_targets == packed[split].accounting.unique_scored_targets
+        assert (
+            probe_p1_window_cpu(
+                model, packed[split].windows[0], ignored_tail_positions=1
+            ).scored_targets
+            == packed[split].accounting.unique_scored_targets
+        )
 
 
 def test_unequal_window_lengths_require_token_weighted_mean() -> None:
-    packed = pack_documents_by_split([
-        toy_document("short", [4], split="train"),
-        toy_document("long", [5, 6, 7], split="validation"),
-    ])
+    packed = pack_documents_by_split(
+        [
+            toy_document("short", [4], split="train"),
+            toy_document("long", [5, 6, 7], split="validation"),
+        ]
+    )
     model = tiny_cpu_model()
     results = [
         probe_p1_window_cpu(model, packed[split].windows[0])
         for split in ("train", "validation")
     ]
     assert [result.scored_targets for result in results] == [1, 3]
-    combined = (
-        sum(r.negative_log_likelihood_sum for r in results)
-        / sum(r.scored_targets for r in results)
+    combined = sum(r.negative_log_likelihood_sum for r in results) / sum(
+        r.scored_targets for r in results
     )
-    expected = (
-        results[0].manual_masked_ce + 3 * results[1].manual_masked_ce
-    ) / 4
+    expected = (results[0].manual_masked_ce + 3 * results[1].manual_masked_ce) / 4
     assert combined == pytest.approx(expected, abs=1e-6)
 
 
@@ -208,7 +226,8 @@ def test_fail_closed_on_zero_or_all_ignored_valid_labels() -> None:
     with pytest.raises(ValueError, match="zero or invalid"):
         probe_p1_window_cpu(model, replace(window, valid_target_count=0))
     fake_all_ignored = replace(
-        window, labels=(IGNORE_INDEX,) * CONTEXT_LENGTH,
+        window,
+        labels=(IGNORE_INDEX,) * CONTEXT_LENGTH,
     )
     with pytest.raises(ValueError, match="valid next-token target"):
         probe_p1_window_cpu(model, fake_all_ignored)
@@ -232,9 +251,11 @@ def test_fail_closed_on_bad_padding_and_token_ids() -> None:
 
 
 def test_probe_rejects_unbounded_cpu_model_forward() -> None:
-    packed = pack_documents_by_split([
-        toy_document("long", list(range(40))),
-    ])["train"]
+    packed = pack_documents_by_split(
+        [
+            toy_document("long", list(range(40))),
+        ]
+    )["train"]
     assert packed.windows[0].valid_target_count == 40
     assert MAX_CPU_PROBE_POSITIONS == 32
     with pytest.raises(ValueError, match="32-position safety bound"):
@@ -250,9 +271,9 @@ def test_probe_rejects_non_cpu_model_without_cuda_initialization() -> None:
 
 
 def test_reference_geometry_remains_4096_4097_even_with_tiny_cpu_probe() -> None:
-    packed = pack_documents_by_split([
-        toy_document("long-boundary", [10] * (CONTEXT_LENGTH + 1))
-    ])["train"]
+    packed = pack_documents_by_split(
+        [toy_document("long-boundary", [10] * (CONTEXT_LENGTH + 1))]
+    )["train"]
     first, second = packed.windows
     assert first.valid_target_count == CONTEXT_LENGTH
     assert second.valid_target_count == 1
@@ -266,9 +287,7 @@ def test_reference_geometry_remains_4096_4097_even_with_tiny_cpu_probe() -> None
 
 
 def test_bos_eos_alternative_policy_is_not_approved_p1_1() -> None:
-    packed = pack_documents_by_split(
-        [toy_document("current", [10])]
-    )["train"]
+    packed = pack_documents_by_split([toy_document("current", [10])])["train"]
     assert packed.bos_offset is None
     assert packed.policy == PackingPolicy(
         insert_bos_at_split_start=False,
