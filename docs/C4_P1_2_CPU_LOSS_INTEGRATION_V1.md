@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-19.
 
-**Status: IMPLEMENTED / CPU EXECUTION AND SCIENTIFIC REVIEW PENDING.**
+**Status update (2026-10-19): FUNCTIONAL CPU VALIDATION PASS; SOURCE FORMATTING PENDING.**
 The scientist explicitly authorized implementation and CPU-only tests of
 C4-P1.2 after approving the initial [C4-P1.1 BOS/EOS/loss policy](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md).
 This stage does not authorize any real corpus operation, GPU workload,
@@ -56,12 +56,34 @@ an explicitly pinned loss contract.
   total valid scored targets, not a naive arithmetic average of
   per-window means.
 
+## Orion CPU validation results (2026-10-19)
+
+The scientist supplied the following terminal evidence from `cenpesor`
+following a clean fast-forward to the implementation commit
+`e7b046f574501f7503d390d99b393e76a2a78d4d`:
+
+- Focused tests (`test_p1_cpu_loss_integration.py`, `test_p1_reference.py`,
+  `test_transformer.py`): **51 passed in 2.62 s**, with
+  `CUDA_VISIBLE_DEVICES=""`.
+- Full available pytest suite with CUDA hidden: **425 passed, 5 skipped
+  in 19.35 s**. This result does not identify the individual skip reasons,
+  which must not be invented from earlier test runs.
+- `ruff check` on both new Python files: **All checks passed**.
+- `ruff format --check` on both new Python files: **NOT PASS**;
+  both were reported as requiring reformatting.
+
+**Engineering assessment:** CPU integration tests passed and validate the
+bounded synthetic-only C4-P1.2 model/packing loss bridge. The source style
+check remains incomplete: format only those two files, rerun focused CPU
+pytest/Ruff checks, and record the formatting-only commit. This is not a
+model architecture or scientific-policy change. Do not mark the complete
+C4-P1.2 verification CLOSED until that final evidence is reviewed.
+
 ## Explicit remaining limitations
 
-- CPU tests have **not yet been executed in the Orion environment**;
-  do not declare C4-P1.2 PASS based solely on the implementation commit.
-  PyTorch is optional in a plain repo environment; running the focused
-  tests requires an environment with CPU-capable PyTorch installed.
+- The Orion CPU test evidence has now been observed (51 focused passes;
+  425 full-suite passes and five skips). Source formatting remains pending
+  on the two newly introduced Python files.
 - This test does not demonstrate actual v24576 tokenizer behavior,
   production corpus packing, production I/O, FP32/BF16 mixed-precision
   training or large-context (4096) numerical loss performance.
@@ -101,6 +123,6 @@ GPU0/GPU1 operations or published checkpoint changes.
 ## Gate statement
 
 **C4 remains IN PROGRESS.** C4-P1.1 scientific policy stays approved.
-C4-P1.2 is **IMPLEMENTED / VERIFICATION PENDING** until the CPU results are
-observed and reviewed. C1 rights and mix remain unresolved, and C3.7,
+C4-P1.2 is **FUNCTIONAL CPU TESTS PASS / FORMAT PENDING** until the two
+new Python files pass `ruff format --check` and final evidence is reviewed. C1 rights and mix remain unresolved, and C3.7,
 C5, C6, production C4 and all GPU experiments remain blocked.
