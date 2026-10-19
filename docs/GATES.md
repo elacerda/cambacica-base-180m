@@ -224,7 +224,23 @@ Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-Status: **IN PROGRESS — P1.1 APPROVED; P1.2 COMPLETE / PASS; STREAMING/SAMPLING DESIGN NEXT**
+**Planejamento C4-P1.3 autorizado em 2026-10-19; documento publicado:**
+[`C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md`](C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md).
+A proposta especifica ordem global por índice externo versus shuffle
+com buffer, passagem incremental de fragmentos já tokenizados,
+continuidade 4.096/4.097 sem EOS em limites artificiais, proteção
+de splits, buffers limitados, cursor por janela confirmada, snapshot
+atômico e testes de falha/replay. **C4-P1.3 é DESIGN PROPOSED, não
+aprovado como implementação ou política final de amostragem.** O
+esquema O1 (ordem por hash com índice externo em disco) é recomendado
+para revisão científica, ainda não selecionado. Sementes, época,
+mistura, quotas e política de repetição permanecem abertas.
+
+Autorização atual C4-P1.3: **somente documentação e planejamento**.
+Nenhum protótipo novo, código de streaming, tokenização de corpus real,
+acesso GPU, treino, C3.7, C5 ou C6 foi autorizado.
+
+Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN PROPOSED / SCIENTIST REVIEW PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
