@@ -99,10 +99,20 @@ dos **cabeçalhos**, não dos textos), e os termos Carolina/USP.
 A Wikipedia PT é uma candidata à **avaliação institucional primeiro**,
 não uma fonte declarada liberada; Carolina segue heterogêneo por
 documento e taxonomia (dat/jud/leg/pub/soc/uni/wik).
-**Nenhuma licença geral, permissão de treinamento, view M1 ou
-redistribuição foi aprovada**. É necessária decisão aplicável
-ao uso acadêmico local e aos futuros outputs/model weights; o
-acesso/processamento do C1 real permanece proibido nesta etapa.
+**Decisão de uso pretendido M1 (2026-10-19):** o cientista definiu
+**execução de pesquisa totalmente interna ao CBPF, sem publicação de
+pesos**. Não há plano de distribuir dados, artefatos ou amostras do
+experimento M1 externamente nesta primeira etapa. Checkpoints
+internos futuros não equivalem a pesos publicados; eles próprios
+ainda não foram autorizados para criação. Isso simplifica a
+avaliação do caso de uso interno, **mas não libera juridicamente
+reprodução, leitura ou tokenização do corpus**, nem comprova uso
+não comercial ou dispensa obrigações de licença. Qualquer divulgação
+futura requer revisão separada.
+**Nenhuma licença geral, permissão de treinamento ou view M1 foi
+aprovada**. É necessária decisão institucional aplicável ao uso
+interno da fonte candidata; o acesso/processamento do C1 real
+permanece proibido nesta etapa.
 
 Próximos critérios de C1:
 
