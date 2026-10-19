@@ -224,23 +224,28 @@ Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-**Planejamento C4-P1.3 autorizado em 2026-10-19; documento publicado:**
+**C4-P1.3 — BASELINE DE DESENHO APPROVED / SCIENTIST APPROVED
+(2026-10-19):** documentação em
 [`C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md`](C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md).
-A proposta especifica ordem global por índice externo versus shuffle
-com buffer, passagem incremental de fragmentos já tokenizados,
-continuidade 4.096/4.097 sem EOS em limites artificiais, proteção
-de splits, buffers limitados, cursor por janela confirmada, snapshot
-atômico e testes de falha/replay. **C4-P1.3 é DESIGN PROPOSED, não
-aprovado como implementação ou política final de amostragem.** O
-esquema O1 (ordem por hash com índice externo em disco) é recomendado
-para revisão científica, ainda não selecionado. Sementes, época,
-mistura, quotas e política de repetição permanecem abertas.
+O cientista selecionou **O1 — ordenação determinística por hash com
+índice externo em disco, sobre view e split imutáveis**, **produtor
+lógico único com emissão ordenada e buffers limitados**, e **cursor
+na última janela contígua confirmada/comprometida pelo consumidor**.
+Os testes sintéticos de interrupção e replay permanecem critérios
+futuros de verificação, não testes já realizados.
 
-Autorização atual C4-P1.3: **somente documentação e planejamento**.
-Nenhum protótipo novo, código de streaming, tokenização de corpus real,
-acesso GPU, treino, C3.7, C5 ou C6 foi autorizado.
+**Não foram decididos** seed concreto, identidade/serialização final
+das chaves de ordenação, composição A/B/C, quotas, substituição/reuso,
+épocas, orçamento de memória/disk, formato/cadência de snapshot ou
+acoplamento atômico ao estado do otimizador. A decisão O1 não aprova
+uma política de amostragem completa.
 
-Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN PROPOSED / SCIENTIST REVIEW PENDING**
+Autorização atual C4-P1.3: **somente aprovação científica do desenho
+e documentação**. Implementação/testes CPU de streaming, mesmo com
+dados artificiais, exigem autorização adicional. Nenhum corpus real,
+CUDA/GPU, C3.7, C5, C6 ou treinamento foi autorizado.
+
+Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 INITIAL DESIGN BASELINE APPROVED / IMPLEMENTATION PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
