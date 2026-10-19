@@ -214,7 +214,18 @@ Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-Status: **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU-ONLY PROTOTYPE NEXT**
+Status: **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU REFERENCE IMPLEMENTED AND TESTED**
+
+O protótipo de referência, limitado a tokens e metadados artificiais,
+está em [`src/cambacica/packing/p1_reference.py`](../src/cambacica/packing/p1_reference.py),
+com testes em [`tests/packing/test_p1_reference.py`](../tests/packing/test_p1_reference.py).
+Validação: 24/24 testes focados; suíte CPU disponível com 379 aprovados e
+10 skips registrados em [`C4_P1_PACKING_DECISION_V1.md`](C4_P1_PACKING_DECISION_V1.md).
+Ruff e formatação passaram nos arquivos Python alterados; verificações de
+repositório completo ainda apontam problemas preexistentes em arquivos
+inalterados. A implementação não conclui C4 nem autoriza pipeline real,
+CUDA, treinamento, C3.7, C5 ou C6. BOS, scoring de EOS, amostragem,
+mistura e batch final continuam provisórios ou abertos.
 
 ## C5 — Smoke training
 

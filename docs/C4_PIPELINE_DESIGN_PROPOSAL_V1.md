@@ -43,6 +43,14 @@ follow-up authorization does not permit C1 production corpus reads,
 real document tokenization, token shard materialization, GPU workloads,
 or training. Other C4-D production components remain unauthorized.
 
+The bounded reference and focused tests are implemented at
+`src/cambacica/packing/p1_reference.py` and
+`tests/packing/test_p1_reference.py`. The focused suite passed 24/24;
+the full available CPU suite passed 379 tests with 10 documented skips.
+This closes only the synthetic P1 reference task. BOS, EOS loss scoring,
+sampling, mixture weights and final batch remain provisional or open;
+the reference does not authorize a production pipeline.
+
 1. Produce versioned **data interface contracts** for
    `document -> tokenized document -> sequence -> training batch`. Every
    emitted segment must trace to a document/group, split, source/subset,
@@ -223,6 +231,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU DESIGN/TESTING ONLY**, not PASS.
+**Gate status:** C4 **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU REFERENCE IMPLEMENTED AND TESTED**, not PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.

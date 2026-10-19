@@ -147,11 +147,23 @@ If windows overlap in the underlying backing stream, deduplicate
 
 ## 5. CPU-only acceptance test matrix
 
-Create a **pure Python reference implementation**, without PyTorch,
+The **pure Python reference implementation** is
+`src/cambacica/packing/p1_reference.py`, without PyTorch,
 CUDA, NVML, network calls, production Parquet access, tokenizer
 instantiation, real tokenization or training. Its input consists only
 of explicit fake token IDs and fake provenance identifiers; it should
 be possible to unit test with `CUDA_VISIBLE_DEVICES=''`.
+
+The module fixes the window context at 4,096 and the vocabulary at
+24,576, inserts EOS after every input document, preserves per-document
+payload ranges and separate EOS offsets, and constructs one stream for
+each of train, validation and test. It owns each candidate target
+position once, pads only inputs with the valid EOS ID, and writes
+`-100` to padded labels. The default provisional policy omits BOS and
+scores inserted EOS targets; both choices are explicit options. The
+reference does not compute a model loss. Its `scored_pairs()` iterator
+omits `-100` labels, so a loss consumer must use `ignore_index=-100` to
+give those positions zero loss contribution.
 
 The following CPU tests are required:
 
@@ -183,6 +195,19 @@ Report the test inventory and observed pass/skip counts. Preserve
 the existing C1/C2/C3 fixtures and all frozen artifacts. Only
 a **separate future scientific decision** may promote these
 prototype defaults into a production packing contract.
+
+**Implementation and CPU validation record (2026-10-19):** all ten
+acceptance areas above are covered by 24 focused tests. The focused
+suite passed **24/24**. The full available suite passed **379 tests**
+with **10 skips**: three optional C3/PyTorch modules, five network smoke
+tests disabled by default, and two tokenizer tests skipped because
+SentencePiece is unavailable. Tests ran with
+`CUDA_VISIBLE_DEVICES=''`; no CUDA/NVML runtime, production corpus
+payload, or training run was used. Ruff and formatting checks pass for
+the changed Python files. Repository-wide Ruff still reports five
+pre-existing E402 findings in two untouched optional-PyTorch test
+files, and repository-wide formatting reports 13 untouched files that
+would be reformatted.
 
 ## 6. Research questions still OPEN
 
