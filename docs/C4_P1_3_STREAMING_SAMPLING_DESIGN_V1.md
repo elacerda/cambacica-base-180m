@@ -1,15 +1,28 @@
 # C4-P1.3 — Deterministic streaming, sampling and resumable cursor design v1
 
-**Status: SCIENTIFIC DESIGN PROPOSAL / NOT APPROVED FOR IMPLEMENTATION.**
-**Planning authorized by the scientist: 2026-10-19.**
+**Status update (2026-10-19): SCIENTIST APPROVED INITIAL C4-P1.3
+DESIGN BASELINE — O1 + SINGLE LOGICAL PRODUCER + ACKNOWLEDGED CURSOR.**
 
-This is a **design-only** deliverable. It does **not** select a production
-sampler, random seed, corpus mixture, epoch/reuse policy, token budget,
-batch, checkpoint cadence or execution plan. It authorizes no CPU
-implementation/tests, corpus read, tokenizer run, NFS materialization,
-GPU operation, optimizer step, C3.7 pilot, C5 smoke training or C6
-pretraining. A separate scientist decision is required for implementation
-of even a synthetic streaming prototype.
+The scientist approved the proposed *architecture baseline* after the
+design-only proposal had been published. The approved choices are
+(1) O1: an external hash-ordered, disk-backed index for a fixed immutable
+reference view and split; (2) a **single logical producer**, with
+bounded buffers and deterministic ordered emission; and (3) a cursor
+anchored to the highest contiguous **consumer-acknowledged/committed
+window**, not the last produced or prefetched item.
+
+The approval also establishes the intended **synthetic crash/replay
+verification objective** as a design requirement, not an executed test.
+
+**Approval scope:** architecture and scientific design only. This
+does **not** select a production sampler, concrete random seed,
+corpus mixture, epoch/reuse policy, token budget, batch, checkpoint
+format/cadence, memory/disk budget or implementation technology.
+It authorizes no CPU implementation/tests, corpus read, tokenizer run,
+NFS materialization, GPU operation, optimizer step, C3.7 pilot,
+C5 smoke training or C6 pretraining. Separate scientist authorization
+is required before even a synthetic CPU streaming prototype is built
+or executed.
 
 ## 1. Previously approved contracts (not reopened)
 
@@ -72,8 +85,11 @@ Shared numeric token IDs do not indicate leakage: provenance does.
 
 ### B. Deterministic document ordering
 
-Two alternatives are scientifically distinguishable and currently
-**NOT SELECTED**:
+Two alternatives are scientifically distinguishable. **O1 is now
+APPROVED for the initial design baseline; O2 remains an unselected
+alternative**. The precise ordering-key serialization/namespace,
+seed/epoch values and treatment of selected/repeated documents
+must be versioned before implementation:
 
 - **O1 — external canonical hash order (recommended for reproducibility):**
   over a fixed approved reference view and one independently assigned
@@ -93,11 +109,12 @@ Two alternatives are scientifically distinguishable and currently
   replay design is possible but requires a stronger cursor and
   experimental bias review.
 
-**Recommendation for future scientist approval: O1 as the initial
-independent ordering baseline**, not as an already approved sampling
-policy. Hash-ordering documents is distinct from sampling sources to
-satisfy mixture targets. Holdout validation/test references should
-remain fixed and free of training-epoch reshuffling.
+**Scientist decision: O1 approved as the initial ordering
+architecture**, not a complete sampling policy. Hash-ordering
+documents is distinct from sampling sources to satisfy mixture
+targets. Holdout validation/test references should remain fixed
+and free of training-epoch reshuffling. No actual ordering seed or
+train-view mixture has been selected.
 
 The sampling protocol still must decide, in a separate C1/C4 review:
 final A/B/C mixture, source/subset quotas, **declared measurement unit**
@@ -166,10 +183,10 @@ buffer**. Worker count, scheduling and read batch size must not
 change token IDs, EOS placement, target ownership, window provenance
 or the manifest's logical ordered-output digest.
 
-A single logical producer is the **recommended first synthetic
-prototype**; multi-worker dispatch is a separate optimization and
-must pass byte-identical/digest-identical synthetic output checks
-against the single-worker oracle. Runtime scheduling order itself
+A **single logical producer is approved as the initial architecture
+baseline**; multi-worker dispatch is an unapproved future
+optimization and must pass byte-identical/digest-identical synthetic
+output checks against the single-worker oracle. Runtime scheduling order itself
 is not the sample order. Fail closed on missing, duplicate or
 out-of-order fragments, lost EOS, split transition and identity drift.
 
@@ -185,7 +202,8 @@ acknowledged** positions. The scientifically meaningful resume point
 is the highest contiguous window whose effects are committed by the
 consumer, **not** the worker queue tail.
 
-**Proposed minimal cursor schema (versioned):**
+**Proposed minimal cursor schema (versioned; fields/serialization
+not yet frozen):**
 
 - run/view manifest ID and SHA-256; C1-S1 manifest and assignments
   SHA-256; C2 tokenizer identity; C4-P1.1 policy digest;
@@ -209,8 +227,10 @@ uncommitted outputs deterministically. An appended EOS is committed
 exactly once per document *in the logical stream*, even if work is
 replayed physically after a crash.
 
-**Critical atomicity boundary:** a data cursor checkpoint alone
-cannot guarantee exactly-once **optimizer updates**. A future
+**Critical atomicity boundary:** the approved acknowledgment
+architecture does not mean an implementation or a verified
+recovery mechanism exists. A data cursor checkpoint alone cannot
+guarantee exactly-once **optimizer updates**. A future
 training-state snapshot must atomically bind model, optimizer,
 scheduler, RNG, data index/cursor, stream identity, update counter
 and scored-token count; absent that coupling, replay can change
@@ -293,27 +313,35 @@ approvals.
 
 | Question | Recommended first design | Decision status |
 | --- | --- | --- |
-| Ordering O1 vs O2 | **O1** external hash-ordered disk-backed index for a fixed synthetic view | OPEN |
-| Initial execution topology | One logical stream/window producer; no parallel non-deterministic emission | OPEN |
+| Ordering O1 vs O2 | **O1** external hash-ordered disk-backed index over fixed immutable reference view | **O1 DESIGN APPROVED**; key serialization, seed and selected view still OPEN |
+| Initial execution topology | One logical stream/window producer; bounded buffers and deterministic emission | **DESIGN APPROVED**; memory bounds/implementation still OPEN |
 | Seed and epoch rule | Versioned independent sampling seed, no hidden reuse; explicit epoch boundaries | OPEN |
 | C1 mixture and quota unit | Keep **blocked** until C1 rights and mix; do not equate normalized words to tokens | BLOCKED BY C1 |
 | End-of-epoch / incomplete stream policy | Treat epoch boundary as explicit event, not implicit BOS/EOS or shard flush; settle context/reuse rules separately | OPEN |
 | Partial-window policy at final split/epoch | Mask remaining label slots; never treat shard/buffer end as a final split | P1.1 principle APPROVED; epoch rule OPEN |
-| In-flight prefetch and ack | Commit only highest contiguous consumer-acknowledged window | OPEN |
+| In-flight prefetch and ack | Resume at highest contiguous consumer-acknowledged/committed window; replay unacknowledged work | **ARCHITECTURE APPROVED**; atomic consumer binding/format still OPEN |
 | Cursor/checkpoint format and cadence | Checksum + atomic local ext4 snapshot tied to future consumer state | OPEN |
 | Bounded memory/disk budgets | Explicit values from measured synthetic/approved later tests, not guessed | OPEN |
 | CPU synthetic prototype | Implement only after separate scientific authorization | NOT AUTHORIZED |
 | Real C1 adapter/tokenization and any GPU | Separate rights/usage review and execution authorization | NOT AUTHORIZED |
 
-**Recommendation for the next approval:** freeze the *initial design
-baseline* around O1, a single logical producer, per-split ordered
-window IDs, explicit committed-window cursor, and crash/replay tests
-on artificial data. That is a recommendation for scientific review,
-not a decision silently taken here.
+**Scientist approval now recorded:** the initial design baseline
+selects O1, a single logical producer, stable split-specific ordered
+window IDs, and a cursor at the last contiguous consumer-acknowledged
+window. Crash/replay on artificial data is the required *future
+verification approach*, not a test already run or permission
+to implement the test harness.
+
+**Next authorization gate:** a separately reviewed, bounded CPU-only
+synthetic streaming prototype with a pinned fixture view and explicit
+seed/key/cursor serialization, plus its error-injection tests.
+The implementation must not be treated as authorized by this
+document alone.
 
 ## 8. Status and stop line
 
-**C4-P1.3: DESIGN PROPOSED / SCIENTIST REVIEW PENDING.**
+**C4-P1.3: INITIAL DESIGN BASELINE SCIENTIST APPROVED;
+IMPLEMENTATION / CPU TESTING NOT AUTHORIZED.**
 **C4: IN PROGRESS. C1: IN PROGRESS. C3.7, C4 production processing,
 C5 and C6: NOT AUTHORIZED.**
 
