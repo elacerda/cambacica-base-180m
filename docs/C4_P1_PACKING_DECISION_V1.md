@@ -10,8 +10,11 @@ optimizer, effective training batch or a production training pipeline.
 P2 document-isolated packing and P3 document-only windows remain
 possible comparison alternatives, not currently selected.
 
-**Status:** P1 *approach* APPROVED; C4-P1 low-level training and token
-semantics **DESIGN UNDER REVIEW**; C4 overall **IN PROGRESS**.
+**Status update (2026-10-19):** P1 approach **APPROVED** and its initial
+sequence/BOS/EOS/loss policy **C4-P1.1 SCIENTIST APPROVED**. The versioned
+[C4-P1.1 sequence/loss contract](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md)
+supersedes provisional statements about BOS and EOS-loss scoring below.
+C4 overall remains **IN PROGRESS**.
 The scientist's approval of the P1 approach in response to the request
 to continue detailed design and CPU tests authorizes a bounded,
 **synthetic-only CPU reference prototype and its tests** for C4-P.
@@ -45,7 +48,10 @@ stream. Cross-document attention is permitted and RoPE positions are
 not reset at each document boundary. An EOS separator **does not**
 implement attention isolation.
 
-**CPU reference proposal, NOT YET SCIENTIFICALLY FROZEN in all details:**
+**Historical CPU reference proposal.** For initial P1 packing/sequence/loss
+policy now approved on 2026-10-19, see
+[C4-P1.1](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md); other research choices
+remain open:
 
 1. Input is a finite ordered list of **artificial tokenized documents**.
    Each has `document_id`, `group_id`, `split`, `source/subset`,
@@ -57,12 +63,13 @@ implement attention isolation.
    including empty documents. Retain empty documents and EOS in
    the accounting/provenance ledger, even if an empty-only split has
    too few tokens to produce a supervised example.
-3. Prototype BOS rule: do **not** auto-insert BOS for every document.
-   BOS insertion at stream start (or an epoch boundary), handling of
-   tokenizer-supplied specials and whether EOS losses are scored are
-   **open scientific decisions**. The CPU prototype should implement
-   an explicit *configurable* policy rather than claim implicit training
-   approval; default can be no BOS and score EOS only in test fixtures.
+3. Initial C4-P1.1 BOS/EOS rule (now **APPROVED**): do **not**
+   auto-insert BOS per document; default reference does not insert a
+   split-start BOS. **Score inserted EOS** when it has a preceding
+   stream token, and score valid cross-document transition targets.
+   Epoch-boundary BOS, tokenizer-provided specials and resampling remain
+   future integration decisions. The reference's configurable alternative
+   BOS/EOS options remain experimental, not approved production policies.
 4. Split streams are constructed **independently**, with no adjacency,
    carry, refill or position overlap between train, validation and test.
    Within a split, EOS-delimited documents may share context.
@@ -192,9 +199,9 @@ The following CPU tests are required:
     test's temporary directory (prefer an in-memory implementation).
 
 Report the test inventory and observed pass/skip counts. Preserve
-the existing C1/C2/C3 fixtures and all frozen artifacts. Only
-a **separate future scientific decision** may promote these
-prototype defaults into a production packing contract.
+the existing C1/C2/C3 fixtures and all frozen artifacts. The initial sequence and loss semantics were explicitly approved as
+**C4-P1.1** (see linked contract above). This does not validate integration
+with the PyTorch model or authorize a production packing/data pipeline.
 
 **Implementation and CPU validation record (2026-10-19):** all ten
 acceptance areas above are covered by 24 focused tests. The focused
@@ -211,9 +218,11 @@ would be reformatted.
 
 ## 6. Research questions still OPEN
 
-- Decide BOS at split/window/epoch start; double-special-token
-  prevention; EOS prediction/loss treatment and cross-document
-  transition loss inclusion.
+- **C4-P1.1 decided:** no BOS automatically per document, score EOS
+  and valid cross-document next-token targets, use explicit
+  `ignore_index=-100` for padded labels. **Still open:** future
+  epoch/reset BOS rules and prevention of tokenizer double specials;
+  independently validate masked cross-entropy integration on CPU.
 - Confirm full-window and trailing-partial policy for efficient
   production batching; evaluate padding efficiency on a rights-cleared
   view only after separate approval.
