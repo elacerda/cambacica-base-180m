@@ -11,10 +11,7 @@ from dataclasses import replace
 
 import pytest
 
-torch = pytest.importorskip("torch", reason="PyTorch is an optional C3 dependency")
-
 from cambacica.model.config import ArchitectureSpec
-from cambacica.model.transformer import CambacicaCausalLM
 from cambacica.packing.p1_cpu_loss_probe import (
     MAX_CPU_PROBE_POSITIONS,
     probe_p1_window_cpu,
@@ -27,6 +24,9 @@ from cambacica.packing.p1_reference import (
     PackingPolicy,
     pack_documents_by_split,
 )
+
+torch = pytest.importorskip("torch", reason="PyTorch is an optional C3 dependency")
+from cambacica.model.transformer import CambacicaCausalLM  # noqa: E402
 
 
 def toy_document(
