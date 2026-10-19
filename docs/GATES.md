@@ -260,7 +260,31 @@ Autorização executada em C4-P1.3a: **somente protótipo e testes
 sintéticos em CPU**. Nenhum corpus real, CUDA/GPU, C3.7, C5, C6 ou
 treinamento foi autorizado.
 
-Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN APPROVED; P1.3a COMPLETE / PASS (SYNTHETIC CPU)**
+**C4-P1.3b — COMPLETE / PASS (2026-10-19), benchmark sintético CPU:**
+implementação autorizada e publicada em
+`22db87a9c35cf532202c051dfe0ce43ea0530fb0`, com somente
+`p1_scalability_synthetic.py`, seus testes e documentação adicionados.
+Na Orion, os dois novos arquivos passaram no `ruff check` e
+`ruff format --check`; a suíte completa com CUDA oculto apresentou
+**470 PASS / 5 SKIP (20,62 s)**. Três execuções independentes
+com tokens artificiais e persistência em `/tmp` no ext4 local
+`/dev/nvme0n1p2` mediram 128, 1.024 e 8.192 documentos de
+128 tokens: pico RSS de 21.136, 22.012 e 23.960 KiB, índice total
+de 135.736, 897.594 e 6.943.291 bytes, duração total de
+0,086197, 0,506973 e 6,924444 s, respectivamente. O maior
+caso teve 1.056.768 tokens e 258 janelas. O tempo de ack + fsync
+foi 2,415402 s de 5,546933 s de leitura + ack.
+Os resultados são **medidas de uma execução por tamanho**,
+sem generalização para o C1 real ou prova de recuperação de uma falha
+de energia. Registro em
+[`C4_P1_3B_SYNTHETIC_CPU_SCALABILITY_V1.md`](C4_P1_3B_SYNTHETIC_CPU_SCALABILITY_V1.md).
+
+**O escopo não muda:** sem acesso a corpus C1, tokenização real,
+GPU/CUDA/NVML, treinamento, seleção da mistura, ou autorização
+de escalabilidade de produção. Novas otimizações do cursor ou
+batching dependem de avaliação/autorização separada.
+
+Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN APPROVED; P1.3a COMPLETE / PASS; P1.3b COMPLETE / PASS (SYNTHETIC CPU ONLY)**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
