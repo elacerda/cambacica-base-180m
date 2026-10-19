@@ -1,6 +1,6 @@
 # C4-P1.3a — Synthetic deterministic disk-indexed P1 streaming prototype
 
-**Status update (2026-10-19): IMPLEMENTED AND PUSHED / ORION FOCUSED TESTS PASS / FULL SUITE PENDING.**
+**Status update (2026-10-19): C4-P1.3a COMPLETE / PASS — SYNTHETIC CPU-ONLY VERIFICATION.**
 
 The scientist authorized a **synthetic CPU-only** implementation and tests after approving O1 hash ordering with a disk-backed index, a single logical producer and a contiguous consumer-acknowledged cursor. This is an experimental fixture-specific implementation, **not an authorization to use any C1 corpus input or GPU**. No tokenizer/model/training code is called.
 
@@ -23,7 +23,24 @@ A single `SyntheticWindowConsumer` holds **at most one unacknowledged window**. 
 ## Validation evidence and limitations
 
 - Offline container check on 2026-10-19: **25 focused synthetic tests passed** against a small *local test-only stand-in* implementing the frozen P1 reference interface. The stand-in is **not packaged**, and its success is **not a substitute for verification with the actual repository's P1 reference**.
-- **Orion focused validation observed:** the scientist supplied `49 passed in 0.89s` for `tests/packing/test_p1_streaming_synthetic.py` and `tests/packing/test_p1_reference.py` with CUDA hidden. The preceding command output showed `2 files reformatted` and `All checks passed!` from Ruff formatting and lint. A **post-format `ruff format --check` result was not supplied**, and the **full repository CPU suite result is still missing**. Do not claim C4-P1.3a complete until those checks and any regression results are reviewed.
+- **Orion focused validation:** scientist-supplied execution of
+  `tests/packing/test_p1_streaming_synthetic.py` and
+  `tests/packing/test_p1_reference.py`, with `CUDA_VISIBLE_DEVICES=""`:
+  **49 passed in 0.89 s**. Ruff lint had reported **All checks passed!**
+  and the two new Python files were formatted.
+- **Orion final validation after push and `git pull --ff-only`:**
+  `ruff format --check` reported **2 files already formatted**;
+  complete CPU pytest suite using `CUDA_VISIBLE_DEVICES=""` and
+  `PYTHONPATH=src` reported **450 passed, 5 skipped in 20.09 s**.
+  The five skip reasons were not supplied in this result and are
+  not inferred here. The full suite was run on the checked-out
+  `1ec6f949d118a222026f1a154be985a83d46ddbc` documentation
+  state containing the P1.3a source commit. No fresh execution was
+  performed by the assistant.
+- **Gate evaluation:** focused reference equivalence, full available
+  CPU regression, lint and explicit post-format check all PASS.
+  The bounded *synthetic* P1.3a implementation is therefore
+  **COMPLETE / PASS** within the authorized scope.
 - The scientist committed and pushed the three expected files as `0c30fffcfa17c76767f9516283410c7fbd514683` (`feat(c4): add deterministic synthetic P1 streaming and resume`). GitHub comparison against the prior documentation HEAD `8d99d134bd11d74cf2808d8b335b1969dbcaa0c2` independently confirms exactly those three added files and no changes to frozen model/tokenizer/corpus code.
 - A full-corpus-size index, actual tokenizer segmentation equivalence, real-data RSS, disk bandwidth, production checkpoint format, C1 rights/mixture, batch sizing, concurrency and optimizer-state coupling are **not validated or authorized**.
 
@@ -40,7 +57,14 @@ CUDA_VISIBLE_DEVICES="" PYTHONPATH=src /srv/cambacica-c3/venv/bin/python -m pyte
 git diff --check
 ```
 
-The code was committed and pushed after the focused tests. The full CPU
-suite and explicit post-format check remain outstanding for gate closure.
+The source was committed and pushed after focused tests. The final Orion
+full CPU suite and explicit post-format check both passed and were recorded
+from the scientist's terminal output.
 
-**Gate:** C4-P1.3 architecture APPROVED; C4-P1.3a code **PUSHED / ORION FOCUSED PASS**, with **full-suite regression and explicit post-format check still pending**. Do not mark C4-P1.3a COMPLETE / PASS yet. C4 overall **IN PROGRESS**; C1 still IN PROGRESS. C3.7, real C4 pipeline, C5/C6 and all GPU work remain **NOT AUTHORIZED**.
+**Gate: C4-P1.3a COMPLETE / PASS** — synthetic O1 disk-indexed,
+single-logical-producer, P1 window and acknowledged-cursor integration
+validated on Orion CPU. C4 overall **IN PROGRESS**; C1 remains
+**IN PROGRESS**. This does not approve the real-data adapter,
+production sampling, batch/optimizer/checkpoint coupling or a
+complete training pipeline. C3.7, real C4 pipeline, C5/C6 and
+all GPU work remain **NOT AUTHORIZED**.
