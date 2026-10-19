@@ -240,12 +240,24 @@ das chaves de ordenação, composição A/B/C, quotas, substituição/reuso,
 acoplamento atômico ao estado do otimizador. A decisão O1 não aprova
 uma política de amostragem completa.
 
-Autorização atual C4-P1.3: **somente aprovação científica do desenho
-e documentação**. Implementação/testes CPU de streaming, mesmo com
-dados artificiais, exigem autorização adicional. Nenhum corpus real,
-CUDA/GPU, C3.7, C5, C6 ou treinamento foi autorizado.
+**C4-P1.3a autorizado separadamente e publicado em 2026-10-19:**
+implementação sintética em CPU com ordenação O1 via índice SQLite,
+produtor lógico único, P1 EOS/overlap, cursor de janela confirmada e
+testes de retomada em
+[`C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md`](C4_P1_3A_SYNTHETIC_CPU_IMPLEMENTATION_V1.md).
+Commit confirmado:
+`0c30fffcfa17c76767f9516283410c7fbd514683` (somente três arquivos
+novos). Evidência fornecida da Orion: **49 testes focados PASS (0,89 s)**;
+`ruff check` PASS; os dois arquivos Python foram formatados.
+**PENDENTE:** saída da suíte completa CPU e `ruff format --check` após
+formatação. O GitHub não apresentou status CI para o commit consultado.
+Portanto, **C4-P1.3a ainda não é COMPLETE / PASS**.
 
-Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 INITIAL DESIGN BASELINE APPROVED / IMPLEMENTATION PENDING**
+Autorização executada em C4-P1.3a: **somente protótipo e testes
+sintéticos em CPU**. Nenhum corpus real, CUDA/GPU, C3.7, C5, C6 ou
+treinamento foi autorizado.
+
+Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN APPROVED; P1.3a PUSHED / FOCUSED CPU PASS / FULL-SUITE PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
