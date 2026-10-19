@@ -50,15 +50,27 @@ a GPU física 0 da Orion. A identidade SentencePiece Unigram 24.576 permanece
 congelada por C2. Consulte o [baseline C3.6](docs/C3_TRAINING_BASELINE_V1.md)
 e o [registro de seleção C3.5](docs/C3_ARCHITECTURE_SELECTION_V1.md).
 
-O baseline não escolhe optimizer, schedule de learning rate, batch efetivo,
-acumulação de gradientes, orçamento de tokens ou política de activation
-checkpointing. A matriz de escalabilidade em contexto 4.096 está proposta,
-mas ainda não foi executada. A mistura final do corpus, a autorização de
-piloto de qualidade e outras decisões abertas permanecem sem decisão. Consulte
-o [plano](docs/C3_ARCHITECTURE_PLANNING.md), a
+O **gate C3 (arquitetura e benchmark) está COMPLETE / PASS**: a matriz
+C3.6 de nove células sintéticas na H100 física 0 foi concluída em 2026-10-17,
+com throughput máximo de **110.674 tokens/s**, pico de memória do processo
+de **19.740 MiB** e nove resultados com checksums válidos. O teste
+determinístico de checkpoint/restart também passou: **333/333 tensores**
+e a sequência de losses idênticos bit a bit após retomada em outro processo.
+A suite foi publicada imutavelmente no NFS, conforme retorno do
+`finalize-suite`, e o registro científico foi autorizado em 2026-10-19.
+Veja os [resultados C3.6](docs/C3_6_SCALABILITY_RESULTS_V1.md).
+
+A configuração **microbatch 4 / acumulação 1** é apenas candidata
+computacional. C3 não escolheu otimizador/schedule definitivos, batch
+efetivo, orçamento de tokens nem política de activation checkpointing.
+**C1 segue IN PROGRESS**, e a mistura final do corpus e os direitos de uso
+continuam pendentes. O piloto C3.7 com dados reais está bloqueado até
+C1 e uma autorização científica específica. **C4–C7 permanecem PENDING**;
+nenhum benchmark autoriza pretraining. Consulte também o
+[plano](docs/C3_ARCHITECTURE_PLANNING.md), a
 [implementação](docs/C3_ARCHITECTURE_IMPLEMENTATION.md), a
-[metodologia do benchmark](docs/C3_BENCHMARK_METHODOLOGY.md) e o
-[runbook manual para Orion](docs/C3_BENCHMARK_RUNBOOK.md).
+[metodologia](docs/C3_BENCHMARK_METHODOLOGY.md) e o
+[runbook Orion](docs/C3_BENCHMARK_RUNBOOK.md).
 
 ## Princípios
 
