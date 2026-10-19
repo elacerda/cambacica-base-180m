@@ -33,9 +33,11 @@ end-to-end rate or scientifically justified training duration.
 
 ### C4-P — Contract design and CPU-only synthetic prototypes
 
-**Authorized scope:** documentation, configuration schemas, offline
-validators, deliberately artificial fixtures, mock/CPU tests, and bounded
-non-corpus dry-run experiments. No production corpus reads, tokenizer
+**Currently authorized:** documentation and design work only: describe
+configuration schemas, offline validators, artificial fixtures, mock/CPU
+unit tests and bounded dry-run protocols. **Implementation and execution
+of even CPU-only prototypes require separate follow-up authorization**
+after scientific review of C4-P. No production corpus reads, tokenizer
 materialization of production documents, GPU workloads or training.
 
 1. Produce versioned **data interface contracts** for
@@ -206,7 +208,7 @@ or data-loader implementations without measurement.
 | Parameter/state precision and activation checkpoint | OPEN | Future training proposal and measured memory |
 | Checkpoint cadence, persistence and retention | OPEN | Local ext4 capacity and recovery requirements |
 | GPU training/pilot authorization | NOT GRANTED | Separate explicit scientist approval |
-| C4-P documentation/CPU-only synthetic testing | PLANNING AUTHORIZED | This document |
+| C4-P documentation and design | PLANNING AUTHORIZED | This document; CPU prototype implementation/testing requires separate approval |
 
 ## 8. Proposed C4-P exit criteria
 
