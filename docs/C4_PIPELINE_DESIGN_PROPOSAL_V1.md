@@ -268,6 +268,15 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1.2, P1.3a AND P1.3b SYNTHETIC CPU COMPLETE / PASS; C4-P2 DESIGN PROPOSED / SCIENTIST REVIEW PENDING; PRODUCTION SAMPLING, C1 RIGHTS AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
+**C4-P2.1 scientific review** was separately authorized **as documentation only**
+and is recorded in
+[C4_P2_1_TRAINING_READINESS_DECISION_REVIEW_V1.md](C4_P2_1_TRAINING_READINESS_DECISION_REVIEW_V1.md).
+It distinguishes the minimum rights-approved bounded C5 learning-smoke
+path from the additional C6 main-pretraining prerequisites, with the
+C1 no-reuse mixture word ceilings and explicit alternatives for
+sampling, epochs and checkpoint atomicity. Its M1-first recommendation
+is **not a scientist-approved training view or execution permission**.
+
+**Gate status:** C4 **IN PROGRESS — P1.2, P1.3a AND P1.3b SYNTHETIC CPU COMPLETE / PASS; C4-P2 DESIGN PROPOSED; C4-P2.1 REVIEW DOCUMENTED / SCIENTIST DECISIONS PENDING; C1 RIGHTS, PRODUCTION SAMPLING AND TRAINING RECIPE REMAIN OPEN**, not C4 PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
