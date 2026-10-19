@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-19.
 
-**Status update (2026-10-19): FUNCTIONAL CPU VALIDATION PASS; SOURCE FORMATTING PENDING.**
+**Status update (2026-10-19): COMPLETE / PASS — bounded synthetic CPU integration verified.**
 The scientist explicitly authorized implementation and CPU-only tests of
 C4-P1.2 after approving the initial [C4-P1.1 BOS/EOS/loss policy](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md).
 This stage does not authorize any real corpus operation, GPU workload,
@@ -69,21 +69,41 @@ following a clean fast-forward to the implementation commit
   in 19.35 s**. This result does not identify the individual skip reasons,
   which must not be invented from earlier test runs.
 - `ruff check` on both new Python files: **All checks passed**.
-- `ruff format --check` on both new Python files: **NOT PASS**;
-  both were reported as requiring reformatting.
+- Initial `ruff format --check` on both files: **NOT PASS**, requiring
+  formatting-only correction.
 
-**Engineering assessment:** CPU integration tests passed and validate the
-bounded synthetic-only C4-P1.2 model/packing loss bridge. The source style
-check remains incomplete: format only those two files, rerun focused CPU
-pytest/Ruff checks, and record the formatting-only commit. This is not a
-model architecture or scientific-policy change. Do not mark the complete
-C4-P1.2 verification CLOSED until that final evidence is reviewed.
+### Formatting correction and final C4-P1.2 evidence
+
+The scientist subsequently supplied terminal evidence from `cenpesor`:
+
+- Formatted **only** `src/cambacica/packing/p1_cpu_loss_probe.py` and
+  `tests/packing/test_p1_cpu_loss_integration.py` using `ruff format`.
+- `ruff format --check`: **2 files already formatted**.
+- `ruff check`: **All checks passed**.
+- Focused CPU pytest with `CUDA_VISIBLE_DEVICES=""`: **51 passed
+  in 2.51 s**, after the formatting change.
+- `git diff --check`: completed without errors.
+- Format-only commit: `29e966a283b2fc7f1343fefacceeb3c47ad9287f`
+  (`style(c4): format P1.2 CPU loss integration`), pushed to `main`.
+  The independent GitHub comparison with the previous HEAD confirms only
+  these two Python files were modified.
+- The full-suite observation remains **425 passed / 5 skipped in 19.35 s**
+  **before** formatting; it was not separately rerun after the formatting
+  commit. The post-format focused CPU tests were rerun successfully.
+
+**Engineering decision: C4-P1.2 COMPLETE / PASS.** The real Transformer
+class with tiny CPU-only configuration agrees on the bounded P1
+sequence/loss integration tests. The original reference's 4096/4097-token
+window geometry remains verified independently. This result is limited
+to synthetic tokens, CPU inference/loss verification, and the tested
+environment; no claim is made about training convergence or production
+streaming.
 
 ## Explicit remaining limitations
 
-- The Orion CPU test evidence has now been observed (51 focused passes;
-  425 full-suite passes and five skips). Source formatting remains pending
-  on the two newly introduced Python files.
+- The Orion CPU test evidence has been observed: 51 focused passes
+  **after formatting**, and 425 full-suite passes / five skips **before
+  formatting**. Both changed files now pass Ruff lint and formatting.
 - This test does not demonstrate actual v24576 tokenizer behavior,
   production corpus packing, production I/O, FP32/BF16 mixed-precision
   training or large-context (4096) numerical loss performance.
@@ -122,7 +142,11 @@ GPU0/GPU1 operations or published checkpoint changes.
 
 ## Gate statement
 
-**C4 remains IN PROGRESS.** C4-P1.1 scientific policy stays approved.
-C4-P1.2 is **FUNCTIONAL CPU TESTS PASS / FORMAT PENDING** until the two
-new Python files pass `ruff format --check` and final evidence is reviewed. C1 rights and mix remain unresolved, and C3.7,
-C5, C6, production C4 and all GPU experiments remain blocked.
+**C4 remains IN PROGRESS; C4-P1.2 is COMPLETE / PASS.**
+C4-P1.1 scientific policy remains approved. This is **not** a
+training-authorization decision. C1 rights and mixture selection remain
+unresolved, and C3.7, C5, C6, production C4 and all GPU experiments remain
+blocked until separately approved. The next proposed subgate is an
+offline, synthetic-only, deterministic streaming/sampling design and
+checkpointable data-order contract; no implementation or execution is
+authorized by this result.
