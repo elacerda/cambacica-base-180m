@@ -236,6 +236,18 @@ implementation, recipe, resource reservation or execution**. No C1
 reads, C4-D/C4-T code, C3.7, GPU, C5 or C6 run is authorized by this
 decision alone.
 
+**Subsequent C1-M1 rights documentary review (2026-10-19):
+EVIDENCE REVIEW COMPLETE / RIGHTS CLEARANCE PENDING.**
+The scientist separately authorized a source-terms review of
+Wikipedia PT and Carolina v2.0.1, recorded in
+[C1_M1_WIKIPEDIA_CAROLINA_RIGHTS_DOCUMENTARY_REVIEW_V1.md](C1_M1_WIKIPEDIA_CAROLINA_RIGHTS_DOCUMENTARY_REVIEW_V1.md).
+The public upstream evidence supports **evaluating Wikipedia first**
+for a bounded academic M1, but grants **no permission to train**.
+Carolina has heterogeneous document licenses and a v2.0.1 update
+to **header** licensing which does not clear every text. Institutional
+review and an explicitly approved C1-S1-consistent view remain
+mandatory. No corpus payload or GPU was accessed.
+
 Required next scientific review topics:
 (1) **C1 limited-view rights/use decision** covering the intended M1
 source(s), inherited group-consistent train and held-out split IDs,
