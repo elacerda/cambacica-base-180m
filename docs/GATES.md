@@ -222,13 +222,16 @@ Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-Status: **IN PROGRESS — P1.1 APPROVED; P1.2 CPU LOSS INTEGRATION IMPLEMENTED / VERIFICATION PENDING**
+Status: **IN PROGRESS — P1.1 APPROVED; P1.2 CPU FUNCTIONAL PASS / SOURCE FORMAT PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
 validação explícita de `ignore_index=-100` e cálculo de CE mascarado).
-**Os testes não foram executados/verificados ainda no ambiente Orion.**
-Relatório, escopo e comandos de verificação em
+**Validação funcional Orion: PASS** — 51 testes focados aprovados, 425 testes
+na suíte completa aprovados e 5 skips, todos com CUDA oculto. `ruff check`
+passou; **`ruff format --check` permanece PENDING**, pois os dois arquivos
+novos requerem formatação. Portanto, C4-P1.2 ainda não está encerrado.
+Relatório e evidências em
 [`C4_P1_2_CPU_LOSS_INTEGRATION_V1.md`](C4_P1_2_CPU_LOSS_INTEGRATION_V1.md).
 Nenhuma execução GPU, treino, processamento do corpus ou alteração da
 arquitetura C ocorreu nesta tarefa.
