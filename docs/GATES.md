@@ -284,7 +284,25 @@ GPU/CUDA/NVML, treinamento, seleção da mistura, ou autorização
 de escalabilidade de produção. Novas otimizações do cursor ou
 batching dependem de avaliação/autorização separada.
 
-Status: **IN PROGRESS — P1.2 COMPLETE / PASS; P1.3 DESIGN APPROVED; P1.3a COMPLETE / PASS; P1.3b COMPLETE / PASS (SYNTHETIC CPU ONLY)**
+**C4-P2 — SCIENTIFIC DESIGN PROPOSED / REVIEW PENDING
+(2026-10-19):** o cientista autorizou **somente planejamento
+e documentação** do pipeline futuro. Proposta versionada em
+[`C4_P2_PRODUCTION_PIPELINE_SCIENTIFIC_DESIGN_V1.md`](C4_P2_PRODUCTION_PIPELINE_SCIENTIFIC_DESIGN_V1.md).
+O documento distingue cotas em palavras normalizadas vs tokens C2,
+admissão de documentos inteiros, ordenação O1 vs interleaving de fontes,
+limites de épocas, reuso, accounting de EOS/targets, interface de
+tokenização, batch, persistência e checkpoint atomicamente associado
+ao estado de treinamento. **Nenhuma nova política foi aprovada.**
+Mistura A/B/C e permissões de uso continuam bloqueadas pelo C1;
+semente, scheduler, épocas, token budget, batch, otimização do cursor,
+recursos e critérios de execução permanecem OPEN.
+
+**Autorização C4-P2: documentação exclusivamente.** Não houve
+implementação, processamento/tokenização do corpus C1,
+execução de testes, uso de GPU/CUDA/NVML, treinamento, C3.7,
+C5 ou C6 nesta etapa.
+
+Status: **IN PROGRESS — P1.2/P1.3a/P1.3b SYNTHETIC CPU PASS; P1.3 DESIGN APPROVED; P2 DESIGN PROPOSED / SCIENTIST REVIEW PENDING**
 
 A implementação da integração de loss **C4-P1.2** foi autorizada e
 adicionada (referência PyTorch apenas CPU, modelo C3 com dimensões reduzidas,
