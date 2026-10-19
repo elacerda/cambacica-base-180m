@@ -16,6 +16,53 @@ license policy pages and *existing* project scientific documents
 were inspected. It is not a substitute for a decision by the
 responsible researcher/institution on applicable law and intended use.
 
+## Recorded M1 intended-use scope (scientist decision, 2026-10-19)
+
+**SCIENTIST-DEFINED PURPOSE / NOT RIGHTS CLEARANCE.** The scientist
+explicitly clarified that M1 is **entirely internal to CBPF** and that
+**no model weights will be published**. Interpret the limited M1
+experiment as an internal institutional learning/engineering smoke,
+not as a public model, data or inference service. Under the
+internal-only scope, no external publication/distribution of
+M1 checkpoints, data, token shards, generated samples, or other
+artifacts is planned **in this first phase**. Any later dissemination
+is a **new use case** requiring separate rights and scientific review.
+
+**Important distinctions:**
+
+- Internal checkpoint files (model/optimizer/RNG/cursor) will be
+  required by the future C5 technical design; *storing them privately*
+  is not the same as *publishing/distributing weights*. Their creation
+  is **not authorized** by this documentary decision.
+- The researcher declared an internal scope; that alone does not
+  establish a legal classification such as `non-commercial`, a
+  statutory training exception, permission to reproduce protected
+  texts, or permission to ignore BY/SA/NC or third-party terms.
+  Confirm the institutional-purpose and licensing basis for
+  training/copying **even without distribution**.
+- The Wikipedia M1 review can now focus on **local internal training
+  with no public release**, retaining an internal attribution,
+  license/version and source-URL ledger. Questions about public
+  model release are **out of the current M1 scope**, not permanently
+  resolved or waived.
+- The Carolina v2.0.1 component/record-license and header-license
+  discrepancies persist regardless of the no-release decision;
+  internal-only use does not turn heterogeneous document rights
+  into a global unrestricted license.
+- Record internal-only personnel access, retention, audit, incident
+  response and any data-protection constraints in the later C1/C4
+  operational approval. Exact access list and retention intervals
+  remain **OPEN**.
+
+**Next decision requested from CBPF/responsible researcher:** a
+written conclusion that a narrowly specified, immutable
+Wikipedia-PT-only C1-S1-compatible M1 view can (or cannot) lawfully
+be read, copied and tokenized for **internal local research training**,
+with required license compliance and data-protection controls.
+**Do not construct or read that view until a separate explicit
+scientific/access authorization.** If Wikipedia is not cleared,
+evaluate another source; do not silently fall back to Carolina.
+
 ## 1. Identified sources and scope
 
 | C1 family | Frozen upstream identity | Existing post-D1 census | Relevant existing C1 evidence |
@@ -208,7 +255,7 @@ automatically forces weights to BY-SA."
 
 | Required evidence/decision | Wikipedia | Carolina | Owner / status |
 | --- | --- | --- | --- |
-| Actual intended activity: bounded local C5 academic learning smoke, any external use, model-weight publication and sample redistribution | Define separately | Define separately | **OPEN — scientist/institution** |
+| Intended activity and dissemination | **Scientist set internal CBPF-only M1 with no published weights or other external artifacts for this phase** | Same intended-use scope if later selected | **PURPOSE DEFINED / institutional rights decision PENDING** |
 | License/rights basis appropriate to frozen version and jurisdiction | Wikipedia ToU and 2023 transition identified; reconcile exact content | Heterogeneous v2.0.1 originals and header-version discrepancy | **OPEN — institutional rights review** |
 | Attribution and license obligations ledger | Article ID/URL fields inherited from C1, implementation needed | TEI fields/individual upstream rights, sufficiency not verified | **OPEN** |
 | Eligible sources/subsets, ineligible sources and fail-closed behavior | Decide for a bounded view | Decide per component/record, not whole corpus | **OPEN** |
@@ -219,8 +266,9 @@ automatically forces weights to BY-SA."
 ### Proposed fastest M1 rights resolution
 
 1. Request a documented institutional interpretation for a
-   **small Wikipedia-only M1** in the specified Brazilian
-   academic context and with the intended output/retention policy.
+   **small Wikipedia-only M1** in the scientist-defined **internal CBPF
+   research/no-publication** context; document required compliance,
+   private storage, institutional usage basis and retention policy.
    This is a **proposed candidate**, not rights clearance or
    selection of a view.
 2. If cleared, separately ask the scientist to approve a fixed
