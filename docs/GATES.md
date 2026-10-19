@@ -199,19 +199,22 @@ reprodutibilidade.
 
 **Planejamento C4-P autorizado em 2026-10-19.** Contrato preliminar
 versionado em [`C4_PIPELINE_DESIGN_PROPOSAL_V1.md`](C4_PIPELINE_DESIGN_PROPOSAL_V1.md).
-O documento diferencia decisões herdadas C1/C2/C3, alternativas de packing
-e fronteiras documentais, política de EOS/BOS/padding/loss, isolamento dos
-splits, amostragem/quotas, armazenamento local, estado completo de
-checkpoint e critérios de aprovação. Nenhuma política nova de packing,
-mistura, batch, optimizer, schedule ou token budget foi aprovada.
+**P1 (packing contínuo delimitado por EOS) APPROVED / SCIENTIST APPROVED**
+em 2026-10-19, com atenção causal entre documentos do mesmo split
+explicitamente permitida. Registro científico, geometria de janelas,
+rastreabilidade e contrato dos testes de referência em CPU em
+[`C4_P1_PACKING_DECISION_V1.md`](C4_P1_PACKING_DECISION_V1.md).
+A escolha P1 **não** resolve BOS, tratamento definitivo da loss em fronteiras,
+amostragem e mistura A/B/C, batch, optimizer, schedule ou orçamento de tokens.
 
-Autorização atual: **documentação e planejamento apenas**. Preparação
-CPU com textos sintéticos e qualquer implementação dependem de revisão do
-desenho; processamento de corpus real, execução GPU, piloto C3.7,
-smoke training C5 e pretraining C6 seguem sem autorização.
-Direitos e política de uso/mistura C1 continuam pendentes.
+Autorização atual: **desenho e implementação/testes limitados à referência
+CPU com tokens artificiais P1**, sem importar PyTorch/CUDA, sem ler,
+tokenizar ou materializar corpus C1 de produção, e sem executar treinamento.
+Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
+e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
+pendentes.
 
-Status: **IN PROGRESS — PLANNING ONLY**
+Status: **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU-ONLY PROTOTYPE NEXT**
 
 ## C5 — Smoke training
 
