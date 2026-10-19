@@ -1,6 +1,6 @@
 # C4 — Data pipeline and training-system design proposal v1
 
-**Status: DESIGN IN PROGRESS / P1.2 CPU PASS / P1.3 STREAMING PLAN PROPOSED (2026-10-19).**
+**Status: DESIGN IN PROGRESS / P1.2 CPU PASS / P1.3 O1 + SINGLE-PRODUCER + ACK-CURSOR DESIGN APPROVED (2026-10-19).**
 
 This document is a **planning artifact**, not a frozen C4 policy,
 authorization to process real corpus text, or authorization to train.
@@ -53,13 +53,17 @@ CPU suite of 425 passed / five skipped, documented in
 [C4_P1_2_CPU_LOSS_INTEGRATION_V1.md](C4_P1_2_CPU_LOSS_INTEGRATION_V1.md).
 This remains a bounded synthetic probe, not production model training.
 
-**C4-P1.3 deterministic streaming/sampling design has been proposed
-for scientist review** in
+**C4-P1.3 initial deterministic streaming architecture is now
+scientist-approved as a design baseline** in
 [C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md](C4_P1_3_STREAMING_SAMPLING_DESIGN_V1.md).
-Its recommended external hash ordering and acknowledged cursor remain
-**OPEN**, and implementation/tests of a streaming producer have **not**
-been authorized. Epoch/reset BOS, source sampling, C1 mixture, quotas,
-data-loader checkpoint coupling and final batch remain undecided.
+The choices are **O1 external hash ordering with a disk-backed
+index**, **one logical producer with bounded deterministic
+emission**, and a **cursor at the last contiguous acknowledged
+consumer window**. The streaming implementation/tests (including
+synthetic-only CPU tests) remain **NOT AUTHORIZED**. Epoch/reset BOS,
+sampling seed/order-key serialization, source quotas, C1 mixture,
+epoch/repeats, data-loader checkpoint coupling and final batch remain
+undecided.
 
 1. Produce versioned **data interface contracts** for
    `document -> tokenized document -> sequence -> training batch`. Every
@@ -232,7 +236,7 @@ or data-loader implementations without measurement.
 | Checkpoint cadence, persistence and retention | OPEN | Local ext4 capacity and recovery requirements |
 | GPU training/pilot authorization | NOT GRANTED | Separate explicit scientist approval |
 | C4-P P1 synthetic CPU reference/loss integration | **COMPLETE / PASS (P1.2)** | No corpus, CUDA or training; see P1.2 record |
-| C4-P1.3 deterministic streaming/sampling design | **PROPOSED FOR REVIEW** | Documentation only; external hash order and ack cursor recommended but not approved or implemented |
+| C4-P1.3 deterministic streaming design | **INITIAL ARCHITECTURE APPROVED** | O1 external disk index, single logical producer and acknowledged-window cursor; sampling details and implementation remain open |
 
 ## 8. Proposed C4-P exit criteria
 
@@ -242,6 +246,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — P1.2 CPU INTEGRATION PASS; P1.3 DESIGN PROPOSED / SCIENTIST REVIEW PENDING**, not PASS.
+**Gate status:** C4 **IN PROGRESS — P1.2 CPU INTEGRATION PASS; P1.3 INITIAL ARCHITECTURE APPROVED / IMPLEMENTATION NOT AUTHORIZED**, not PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
