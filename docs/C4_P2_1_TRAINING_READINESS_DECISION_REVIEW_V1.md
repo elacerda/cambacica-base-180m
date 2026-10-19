@@ -1,7 +1,7 @@
 # C4-P2.1 — Scientific decision review and shortest safe path to first training
 
 **Date:** 2026-10-19.
-**Status: DOCUMENTED PROPOSAL / SCIENTIST DECISIONS PENDING.**
+**Status update (2026-10-19): M1 SCIENTIFIC PRIORITY APPROVED; ALL EXECUTION/RIGHTS/RECIPE DECISIONS PENDING.**
 **Authorization:** scientist authorized C4-P2.1 **review and documentation only**.
 **Goal:** separate the **minimum prerequisites for a short real-data
 learning smoke run (C5)** from the **additional prerequisites for full
@@ -226,21 +226,29 @@ First decide whether the goal is:
   solves quota capacity/reuse and sets the model-token budget.
   C5 is still required for execution validation.
 
-**C4-P2.1 recommendation: prioritize M1, while advancing C1 rights
-and production-mixture science in parallel.** This is a proposal,
-not a scientist-approved scope change, and does not authorize C1
-reads, C4-D/C4-T implementations, C3.7, C5 or C6.
+**Scientist decision (2026-10-19): M1 APPROVED AS THE NEXT OBJECTIVE.**
+After publication of this review the scientist explicitly agreed to
+**prioritize an initial bounded real-data C5 learning smoke** before
+full C6 pretraining. C1 rights/usage review and later C6 mixture science
+may proceed in parallel, but the M1 prioritization **does not approve
+any specific training view, source usage, sampling/epoch policy,
+implementation, recipe, resource reservation or execution**. No C1
+reads, C4-D/C4-T code, C3.7, GPU, C5 or C6 run is authorized by this
+decision alone.
 
 Required next scientific review topics:
-(1) M1 vs M2;
-(2) permission and view for C1;
-(3) D1–D8 candidate sampling/epoch/checkpoint interfaces;
-(4) authorization request for limited synthetic C4-D prototype
-separately from this document.
+(1) **C1 limited-view rights/use decision** covering the intended M1
+source(s), inherited group-consistent train and held-out split IDs,
+obligations, and a reproducible view manifest;
+(2) D1–D8 candidate sampling/epoch/checkpoint interfaces for M1;
+(3) independent approval for a bounded synthetic-only C4-D prototype;
+(4) future C4-T recipe and integrated checkpoint policy, followed by
+explicit real-data/GPU C5 approval only after the earlier gates pass.
+M2/full C6 mixture and token budget remain open.
 
 ## 8. Gate boundary
 
-**C4-P2.1: DESIGN REVIEW DOCUMENTED / SCIENTIST DECISION PENDING.**
+**C4-P2.1: M1 PRIORITY SCIENTIST APPROVED / SCIENTIFIC CONTRACTS & EXECUTION STILL PENDING.**
 **C4: IN PROGRESS. C1: IN PROGRESS.**
 **C3.7, real-corpus C4-D, training/GPU C5/C6: NOT AUTHORIZED.**
 
