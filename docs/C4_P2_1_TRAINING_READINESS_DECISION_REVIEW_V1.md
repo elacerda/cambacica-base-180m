@@ -248,6 +248,20 @@ to **header** licensing which does not clear every text. Institutional
 review and an explicitly approved C1-S1-consistent view remain
 mandatory. No corpus payload or GPU was accessed.
 
+**Further scientist scope clarification (2026-10-19):
+INTERNAL CBPF-ONLY M1 / NO PUBLICATION OF MODEL WEIGHTS.**
+The scientist explicitly confined this first bounded learning
+experiment to internal institutional use with **no published
+weights**. Public distribution of M1 data, checkpoints, token
+artifacts or generated examples is not planned in this phase.
+The C1-M1 rights review now records this narrower use case.
+It does **not** clear any source's training/reproduction rights,
+authorize the selected view, establish that use is legally
+non-commercial, or permit C4-D/C4-T/C5/GPU execution. A future
+public release would require a distinct rights and scientist
+decision. Internal checkpointing would still need approval in
+the future technical protocol.
+
 Required next scientific review topics:
 (1) **C1 limited-view rights/use decision** covering the intended M1
 source(s), inherited group-consistent train and held-out split IDs,
