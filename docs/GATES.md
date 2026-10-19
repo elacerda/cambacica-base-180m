@@ -204,8 +204,16 @@ em 2026-10-19, com atenção causal entre documentos do mesmo split
 explicitamente permitida. Registro científico, geometria de janelas,
 rastreabilidade e contrato dos testes de referência em CPU em
 [`C4_P1_PACKING_DECISION_V1.md`](C4_P1_PACKING_DECISION_V1.md).
-A escolha P1 **não** resolve BOS, tratamento definitivo da loss em fronteiras,
-amostragem e mistura A/B/C, batch, optimizer, schedule ou orçamento de tokens.
+**C4-P1.1 APPROVED / SCIENTIST APPROVED (2026-10-19):**
+EOS id 2 após cada documento, EOS previsto como target válido, sem
+inserção automática de BOS por documento, atenção causal contínua entre
+documentos do mesmo split, janelas de 4.096 input/label com backing de
+4.097 e stride 4.096, padding de inputs com token de vocabulário válido e
+labels inválidos `-100` excluídos da loss. A decisão está registrada em
+[`C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md`](C4_P1_1_SEQUENCE_LOSS_CONTRACT_V1.md).
+Permanecem abertas políticas BOS para reinício/épocas, inserção de specials
+por adaptadores, amostragem/mistura A/B/C, batch, optimizer, schedule e
+orçamento de tokens. **Integração da loss PyTorch em CPU ainda não testada.**
 
 Autorização atual: **desenho e implementação/testes limitados à referência
 CPU com tokens artificiais P1**, sem importar PyTorch/CUDA, sem ler,
@@ -214,7 +222,7 @@ Processamento de corpus real, execução GPU, piloto C3.7, smoke training C5
 e pretraining C6 seguem sem autorização. Direitos e mistura C1 continuam
 pendentes.
 
-Status: **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU REFERENCE IMPLEMENTED AND TESTED**
+Status: **IN PROGRESS — P1.1 APPROVED; SYNTHETIC CPU REFERENCE TESTED; PYTORCH CPU LOSS INTEGRATION NEXT**
 
 O protótipo de referência, limitado a tokens e metadados artificiais,
 está em [`src/cambacica/packing/p1_reference.py`](../src/cambacica/packing/p1_reference.py),
@@ -224,8 +232,10 @@ Validação: 24/24 testes focados; suíte CPU disponível com 379 aprovados e
 Ruff e formatação passaram nos arquivos Python alterados; verificações de
 repositório completo ainda apontam problemas preexistentes em arquivos
 inalterados. A implementação não conclui C4 nem autoriza pipeline real,
-CUDA, treinamento, C3.7, C5 ou C6. BOS, scoring de EOS, amostragem,
-mistura e batch final continuam provisórios ou abertos.
+CUDA, treinamento, C3.7, C5 ou C6. BOS por documento, scoring de EOS,
+fronteiras e mascaramento de labels foram aprovados em C4-P1.1, mas a
+integração PyTorch em CPU ainda não foi verificada. Amostragem, mistura,
+batch final e as demais decisões de treinamento permanecem abertas.
 
 ## C5 — Smoke training
 
