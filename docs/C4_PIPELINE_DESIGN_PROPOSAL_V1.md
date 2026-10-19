@@ -1,12 +1,15 @@
 # C4 — Data pipeline and training-system design proposal v1
 
-**Status: DESIGN IN PROGRESS / DRAFT FOR SCIENTIST REVIEW (2026-10-19).**
+**Status: DESIGN IN PROGRESS / P1 APPROVED BY SCIENTIST (2026-10-19).**
 
 This document is a **planning artifact**, not a frozen C4 policy,
 authorization to process real corpus text, or authorization to train.
-The scientist authorized C4 planning after C3 completed. All production
-data processing, local GPU execution, real-data training, C3.7, C5 and
-C6 require their own explicit gates/approvals.
+The scientist authorized C4 planning after C3 completed and subsequently
+approved **P1 (contiguous EOS packing)** as the initial approach, with a
+bounded synthetic-only CPU reference and tests. The detailed decision and
+acceptance contract are in [C4_P1_PACKING_DECISION_V1.md](C4_P1_PACKING_DECISION_V1.md).
+All production data processing, local GPU execution, real-data training,
+C3.7, C5 and C6 require their own explicit gates/approvals.
 
 ## 1. Inputs and inherited decisions
 
@@ -33,12 +36,12 @@ end-to-end rate or scientifically justified training duration.
 
 ### C4-P — Contract design and CPU-only synthetic prototypes
 
-**Currently authorized:** documentation and design work only: describe
-configuration schemas, offline validators, artificial fixtures, mock/CPU
-unit tests and bounded dry-run protocols. **Implementation and execution
-of even CPU-only prototypes require separate follow-up authorization**
-after scientific review of C4-P. No production corpus reads, tokenizer
-materialization of production documents, GPU workloads or training.
+**Currently authorized:** documentation and C4-P1 scientific design,
+plus a **bounded pure-Python synthetic-token CPU reference prototype
+and its tests** after the scientist approved P1 on 2026-10-19. That
+follow-up authorization does not permit C1 production corpus reads,
+real document tokenization, token shard materialization, GPU workloads,
+or training. Other C4-D production components remain unauthorized.
 
 1. Produce versioned **data interface contracts** for
    `document -> tokenized document -> sequence -> training batch`. Every
@@ -133,9 +136,11 @@ alternatives, not approvals**:
   masked target positions. Simpler leakage semantics but can waste
   compute and requires a tested loss-mask and padding contract.
 
-C4-P must compare P1/P2/P3 on semantics, coverage, token utilization,
-implementation scope, numerical equivalence and implications for
-long-text continuity. The scientist will select the initial C4 policy.
+The scientist selected **P1 as the initial baseline** on 2026-10-19.
+P2/P3 remain documented alternatives for future controlled comparisons,
+not selected production paths. The detailed P1 CPU-reference contract and
+unresolved boundary/sequence decisions are in
+[C4_P1_PACKING_DECISION_V1.md](C4_P1_PACKING_DECISION_V1.md).
 For P1, an EOS token is a separator, not proof of attention isolation.
 For P3, choose explicit masking and avoid inserting `pad_id=-1`
 into embeddings. Empty retained documents must be represented in
@@ -197,7 +202,7 @@ or data-loader implementations without measurement.
 
 | Decision | Current status | Evidence/requirement before approval |
 | --- | --- | --- |
-| Packing P1/P2/P3; attention across documents | OPEN | Scientist selects, test model compatibility |
+| Packing P1/P2/P3; attention across documents | **P1 APPROVED** | Contiguous EOS stream, causal cross-document attention allowed; low-level semantics remain to review |
 | BOS/EOS, loss/padding/mask semantics | OPEN | C2 identity fixed; CPU boundary tests |
 | 4,096 input/label alignment, tail/overlap | OPEN | Prove exact coverage and accounting |
 | Mixture A/B/C and source quotas | BLOCKED BY C1 | Final rights/use policy and mixture-selection gate |
@@ -208,7 +213,7 @@ or data-loader implementations without measurement.
 | Parameter/state precision and activation checkpoint | OPEN | Future training proposal and measured memory |
 | Checkpoint cadence, persistence and retention | OPEN | Local ext4 capacity and recovery requirements |
 | GPU training/pilot authorization | NOT GRANTED | Separate explicit scientist approval |
-| C4-P documentation and design | PLANNING AUTHORIZED | This document; CPU prototype implementation/testing requires separate approval |
+| C4-P documentation and P1 synthetic CPU tests | **AUTHORIZED (P1 ONLY)** | See C4 P1 decision; no corpus, CUDA, training or other C4-D implementation |
 
 ## 8. Proposed C4-P exit criteria
 
@@ -218,6 +223,6 @@ training-state interface, full validation/failure matrix, resource
 budget and explicit open decisions. Reviewer signoff is required
 **before** implementing or using real corpus production paths.
 
-**Gate status:** C4 **IN PROGRESS — PLANNING ONLY**, not PASS.
+**Gate status:** C4 **IN PROGRESS — P1 APPROVED; SYNTHETIC CPU DESIGN/TESTING ONLY**, not PASS.
 **Hard stop:** no production-token shards, real-corpus training, GPU run,
 C3.7 pilot, C5 smoke run or C6 pretraining under this authorization.
